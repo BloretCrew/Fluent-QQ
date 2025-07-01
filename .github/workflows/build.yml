@@ -1,0 +1,322 @@
+name: 应用程序打包
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches:
+      - Windows
+
+jobs:
+  Set-Version:
+    runs-on: windows-latest
+
+    steps:
+    - name: 检出代码
+      uses: actions/checkout@v2
+
+    - name: 更新版本号
+      run: |
+        python .github/workflows/refresh-version.py
+
+    - name: 提交版本号更新到仓库
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add Fluent-QQ-Setup.iss
+        git add config.json
+        git add cmcl.json
+        git commit -m "更新 MyAppVersion 版本号和一些配置文件的默认值。"
+        git push
+      shell: pwsh
+
+  Build:
+    needs: Set-Version
+    runs-on: windows-latest
+
+    env:
+      PYTHON_VERSION: '3.9'
+      OUTPUT_DIR: 'output'
+      ARTIFACT_NAME: 'Fluent-QQ-Windows.zip'
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+      with:
+        ref: 'Windows'
+
+    - name: 验证资源文件路径
+      run: |
+        Get-ChildItem -Path .
+        if (-not (Test-Path "bloret.ico")) { Write-Host "bloret.ico not found"; exit 1 }
+        if (-not (Test-Path "config.json")) { Write-Host "config.json not found"; exit 1 }
+        if (-not (Test-Path "ui")) { Write-Host "ui directory not found"; exit 1 }
+        if (-not (Test-Path "cmcl.json")) { Write-Host "cmcl.json not found"; exit 1 }
+        if (-not (Test-Path "cmcl.exe")) { Write-Host "cmcl.exe not found"; exit 1 }
+        if (-not (Test-Path "cmcl.blank.json")) { Write-Host "cmcl.blank.json not found"; exit 1 }
+      shell: pwsh
+
+    - name: 设置 Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 安装程序依赖和打包依赖
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pillow
+        pip install pyinstaller
+    
+    - name: 使用 PyInstaller 打包
+      run: |
+        pyinstaller --onefile --noconsole --icon=bloret.ico --name=Fluent-QQ `
+          --add-data "bloret.ico;." `
+          --add-data "config.json;." `
+          --add-data "ui;ui" `
+          --add-data "cmcl.json;." `
+          --add-data "cmcl.exe;." `
+          --add-data "cmcl.blank.json;." `
+          --hidden-import=sip `
+          --hidden-import=qfluentwidgets `
+          --hidden-import=win11toast `
+          --paths=. `
+          Fluent-QQ.py
+      shell: pwsh
+
+    - name: 创建包含其他文件夹的目录
+      run: |
+        mkdir -p ${{ env.OUTPUT_DIR }}
+        cp dist/Fluent-QQ.exe ${{ env.OUTPUT_DIR }}/
+        cp -r ui/ ${{ env.OUTPUT_DIR }}/
+        cp -r cmcl.exe ${{ env.OUTPUT_DIR }}/
+        cp -r cmcl.json ${{ env.OUTPUT_DIR }}/
+        cp -r cmcl.blank.json ${{ env.OUTPUT_DIR }}/
+        cp -r config.json ${{ env.OUTPUT_DIR }}/
+        cp -r LICENSE ${{ env.OUTPUT_DIR }}/
+        cp -r servers.dat ${{ env.OUTPUT_DIR }}/
+        cp -r cmcl_save.json ${{ env.OUTPUT_DIR }}/
+        cp -r restart.ps1 ${{ env.OUTPUT_DIR }}/
+        cp -r update.ps1 ${{ env.OUTPUT_DIR }}/
+        cp -r bloret.ico ${{ env.OUTPUT_DIR }}/
+
+    - name: 清理旧压缩包
+      run: |
+        if (Test-Path "${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}") {
+          Remove-Item "${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}"
+        }
+      shell: pwsh
+
+    - name: 创建压缩包
+      run: Compress-Archive -Path "${{ env.OUTPUT_DIR }}/*" -DestinationPath "${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}"
+      shell: pwsh
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ
+        path: "${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}"
+  Code-Package:
+    needs: Set-Version
+    runs-on: windows-latest
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+      with:
+        ref: 'Windows'
+
+    - name: 创建输出目录并清理
+      run: |
+        # 强制创建目录并清理旧内容
+        New-Item -ItemType Directory -Force -Path "output"
+        Remove-Item -Path "output/*" -Recurse -ErrorAction Ignore
+      shell: pwsh
+
+    - name: 复制所有文件（排除 .git 和 output）
+      run: |
+        # 递归复制所有文件到 output 目录，排除 .git 和 output 目录
+        Copy-Item -Path "*" -Destination "output" -Recurse -Exclude @(".git", "output")
+        # 确保 LICENSE 文件被复制
+        if (Test-Path "LICENSE") {
+          Copy-Item -Path "LICENSE" -Destination "output\"
+        } else {
+          Write-Host "LICENSE 文件未找到"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: 创建压缩包
+      run: |
+        # 直接压缩 output 目录内容为 Code-Package.zip
+        Compress-Archive -Path "output/*" -DestinationPath "output/Code-Package.zip" -Force
+      shell: pwsh
+
+    - name: 上传压缩包
+      uses: actions/upload-artifact@v4
+      with:
+        name: Code-Package
+        path: "output/Code-Package.zip"
+
+  Build-Setup:
+    needs: Build
+    runs-on: windows-latest
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+      with:
+        ref: 'Windows'
+
+    - name: 下载构建产物
+      uses: actions/download-artifact@v4
+      with:
+        name: Fluent-QQ
+        path: output
+
+    - name: 解压构建产物
+      run: |
+        Expand-Archive -Path "output/Fluent-QQ-Windows.zip" -DestinationPath "output/"
+      shell: pwsh
+
+    - name: 确保 LICENSE 文件存在
+      run: |
+        if (-not (Test-Path "output/LICENSE")) {
+          Write-Host "LICENSE 文件未找到"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: 展示完整文件夹目录
+      run: |
+        Write-Host "当前文件夹目录结构如下："
+        Get-ChildItem -Path "output" -Recurse | Format-Table -AutoSize
+      shell: pwsh
+
+    - name: 设置系统语言为简体中文
+      run: |
+        Set-WinSystemLocale -SystemLocale zh-CN
+        Write-Host "系统语言已设置为简体中文"
+      shell: pwsh
+
+    - name: 安装 Inno Setup
+      run: |
+        choco install innosetup --yes
+      shell: pwsh
+
+    - name: 运行 Inno Setup 构建安装程序
+      run: |
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\Fluent-QQ-Setup.iss"
+      shell: pwsh
+
+    - name: 上传安装程序
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ-Setup
+        path: "./output/Fluent QQ Setup.exe"
+
+
+  # release:
+  #   needs: [Build, Code-Package, Build-Setup]
+  #   runs-on: windows-latest
+  #   env:
+  #     OUTPUT_DIR: 'output'  # 定义 OUTPUT_DIR 环境变量
+  #     ARTIFACT_NAME: 'Fluent-QQ-Windows.zip'  # 定义 ARTIFACT_NAME 环境变量
+  #   steps:
+  #   - name: 检出代码
+  #     uses: actions/checkout@v2
+
+  #   - name: 下载构建产物
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: Fluent-QQ
+  #       path: ${{ env.OUTPUT_DIR }}
+        
+  #   - name: 检查 Fluent-QQ.zip 是否存在
+  #     run: |
+  #       if (-not (Test-Path "${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}")) {
+  #         Write-Host "${{ env.ARTIFACT_NAME }} not found"
+  #         exit 1
+  #       }
+  #     shell: pwsh
+
+  #   - name: 创建预发布版本
+  #     id: create_release
+  #     uses: actions/github-script@v6
+  #     env:
+  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #     with:
+  #       script: |
+  #         const fs = require('fs');
+  #         const path = require('path');
+
+  #         // 读取 release.md 文件内容
+  #         const releaseNotesPath = path.join(process.env.GITHUB_WORKSPACE, '.github/workflows/release.md');
+  #         if (!fs.existsSync(releaseNotesPath)) {
+  #           throw new Error('release.md 文件未找到');
+  #         }
+  #         const releaseNotes = fs.readFileSync(releaseNotesPath, 'utf8');
+
+  #         // 创建预发布版本
+  #         const { data: release } = await github.rest.repos.createRelease({
+  #           owner: context.repo.owner,
+  #           repo: context.repo.repo,
+  #           tag_name: `v${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 12)}`, // 使用时间戳作为标签
+  #           name: '预发布版本',
+  #           body: releaseNotes,
+  #           draft: false,
+  #           prerelease: true
+  #         });
+
+  #         console.log('Created release:', release);
+
+  #         // 确保生成 upload_url.txt 文件
+  #         const filePath = path.join(process.env.GITHUB_WORKSPACE, 'upload_url.txt');
+  #         fs.writeFileSync(filePath, release.upload_url);
+
+  #   - name: 检查 upload_url.txt 是否存在并验证内容
+  #     run: |
+  #       if (-not (Test-Path "upload_url.txt")) {
+  #         Write-Host "upload_url.txt 文件未找到"
+  #         exit 1
+  #       }
+  #       $uploadUrl = Get-Content -Path "upload_url.txt" -Raw
+  #       if (-not $uploadUrl) {
+  #         Write-Host "upload_url.txt 内容为空"
+  #         exit 1
+  #       }
+  #     shell: pwsh
+
+  #   - name: 设置上传 URL 环境变量
+  #     id: set_upload_url
+  #     run: |
+  #       $uploadUrl = Get-Content -Path "upload_url.txt" -Raw
+  #       Add-Content -Path $env:GITHUB_ENV -Value "UPLOAD_URL=$uploadUrl"
+  #     shell: pwsh
+
+  #   - name: 检查上传 URL 是否有效
+  #     run: |
+  #       if (-not "${{ env.UPLOAD_URL }}") {
+  #         Write-Host "UPLOAD_URL 未正确设置"
+  #         exit 1
+  #       }
+  #     shell: pwsh
+
+  #   - name: 检查构建产物是否存在
+  #     run: |
+  #       if (-not (Test-Path "${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}")) {
+  #         Write-Host "构建产物未找到: ${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}"
+  #         exit 1
+  #       }
+  #     shell: pwsh
+
+  #   - name: 上传构建产物到预发布版本
+  #     uses: actions/upload-release-asset@v1
+  #     env:
+  #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #     with:
+  #       upload_url: ${{ env.UPLOAD_URL }}
+  #       asset_path: ${{ env.OUTPUT_DIR }}/${{ env.ARTIFACT_NAME }}
+  #       asset_name: ${{ env.ARTIFACT_NAME }}
+  #       asset_content_type: application/zip

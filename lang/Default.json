@@ -1,0 +1,18 @@
+{
+    "download_success_title": "✅ 下载完成",
+    "download_success_content": "版本 {version} 已成功下载\n前往主页就可以启动了！",
+    "download_error_title": "❌ 下载失败",
+    "download_error_content": "下载过程中发生错误: {error}",
+    "welcome_message": "欢迎使用百络谷启动器 (＾ｰ^)ノ",
+    "welcome_user_count": "您是百络谷启动器的第 {user_count} 位用户",
+    "update_available_title": "当前版本不是最新版",
+    "update_available_content": "Fluent QQ 貌似有个新新新版本\n你似乎正在运行 {current_version}，但事实上，百络谷启动器 {latest_version} 来啦！按下按钮自动更新。\n这个更新... {update_text}",
+    "update_error_title": "无法连接到 pcfs.top",
+    "update_error_content": "您无法连接到 PCFS 服务器来检查版本更新\n这可能是由于您的网络不佳？或是 PCFS 服务出现故障？\n请检查您的网络连接，或者稍后再试。\n我们等待了 3 秒，但它只显示：{error}",
+    "run_game_title": "🔄️ 正在启动 {version}",
+    "run_game_content": "正在处理 Minecraft 文件和启动...\n您马上就能见到 Minecraft 窗口出现了！",
+    "game_end_title": "⏹️ 游戏结束",
+    "game_end_content": "Minecraft 已结束\n如果您认为是异常退出，请查看 log 文件夹中的最后一份日志文件\n并前往本项目的 Github 或 百络谷QQ群 询问",
+    "run_script_error_title": "❌ 运行失败",
+    "run_script_error_content": "run.ps1 运行失败: {error}"
+}
