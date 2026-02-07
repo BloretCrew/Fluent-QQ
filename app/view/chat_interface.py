@@ -5,6 +5,7 @@ from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, Tr
                             SimpleCardWidget, IconWidget, LineEdit, PrimaryPushButton)
 from app.common.api_client import client
 from app.view.components.image_widget import ImageWidget
+from app.view.components.avatar_widget import AvatarWidget
 import json
 
 class MessageCard(SimpleCardWidget):
@@ -22,16 +23,20 @@ class MessageCard(SimpleCardWidget):
         self.layout.setContentsMargins(15, 12, 15, 12)
         self.layout.setSpacing(15)
         
-        # Left: Avatar Placeholder
+        # Left: Avatar
         self.avatar_container = QWidget(self)
         self.avatar_container.setFixedSize(48, 48)
-        self.avatar_container.setStyleSheet("background-color: #f0f0f0; border-radius: 24px;")
+        self.avatar_container.setStyleSheet("background-color: transparent;")
         self.avatar_layout = QVBoxLayout(self.avatar_container)
         self.avatar_layout.setContentsMargins(0, 0, 0, 0)
         
-        icon = FIF.PEOPLE if is_group else FIF.CHAT
-        self.avatar_icon = IconWidget(icon, self.avatar_container)
-        self.avatar_icon.setFixedSize(24, 24)
+        # Avatar Widget
+        if is_group:
+            avatar_url = f"http://p.qlogo.cn/gh/{target_id}/{target_id}/100"
+        else:
+            avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={target_id}&s=640"
+            
+        self.avatar_icon = AvatarWidget(avatar_url, size=48, parent=self.avatar_container)
         self.avatar_layout.addWidget(self.avatar_icon, 0, Qt.AlignmentFlag.AlignCenter)
         
         # Center: Name and Message
@@ -143,12 +148,16 @@ class ChatView(QWidget):
             
         messages = res.get("data", {}).get("messages", [])
         for msg in messages:
-            sender_name = msg.get("sender", {}).get("nickname", "用户")
+            sender = msg.get("sender", {})
+            sender_name = sender.get("nickname", "用户")
+            sender_id = sender.get("user_id")
             content = msg.get("message", "")
+            
+            avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
             # Identification of self can be improved if we have current login ID
-            self.addMessage(sender_name, content, is_self=False)
+            self.addMessage(sender_name, content, is_self=False, avatar_url=avatar_url)
 
-    def addMessage(self, name, message, is_self=False):
+    def addMessage(self, name, message, is_self=False, avatar_url=None):
         """ Add a message to the chat view """
         # Main container for the message row
         row_widget = QWidget()
@@ -156,9 +165,12 @@ class ChatView(QWidget):
         row_layout.setContentsMargins(0, 8, 0, 8)
         row_layout.setSpacing(12)
         
-        # Avatar (Placeholder)
-        avatar = IconWidget(FIF.PEOPLE, row_widget)
-        avatar.setFixedSize(36, 36)
+        # Avatar
+        if avatar_url:
+            avatar = AvatarWidget(avatar_url, size=36, parent=row_widget)
+        else:
+            avatar = IconWidget(FIF.PEOPLE, row_widget)
+            avatar.setFixedSize(36, 36)
         
         # Content container (Name + Bubble)
         content_layout = QVBoxLayout()
@@ -539,7 +551,9 @@ class ChatInterface(QFrame):
         
         routeKey = f"chat_{target_id}"
         if routeKey in self.chats:
-            self.chats[routeKey].addMessage(sender_name, content)
+            sender_id = data.get("sender", {}).get("user_id")
+            avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
+            self.chats[routeKey].addMessage(sender_name, content, avatar_url=avatar_url)
 
     def _update_or_create_card(self, target_id, name, text, time_str, is_group, card_type="recent"):
         card_key = f"{card_type}:{target_id}"
