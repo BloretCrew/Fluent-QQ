@@ -149,15 +149,62 @@ class ChatView(QWidget):
             self.addMessage(sender_name, content, is_self=False)
 
     def addMessage(self, name, message, is_self=False):
-        bubble = SimpleCardWidget(self.scroll_widget)
+        """ Add a message to the chat view """
+        # Main container for the message row
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 8, 0, 8)
+        row_layout.setSpacing(12)
+        
+        # Avatar (Placeholder)
+        avatar = IconWidget(FIF.PEOPLE, row_widget)
+        avatar.setFixedSize(36, 36)
+        
+        # Content container (Name + Bubble)
+        content_layout = QVBoxLayout()
+        content_layout.setSpacing(4)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Name Label
+        name_label = CaptionLabel(name, row_widget)
+        name_label.setStyleSheet("color: #666666;")
+        
+        # Bubble Container
+        bubble = SimpleCardWidget(row_widget)
         bubble_layout = QVBoxLayout(bubble)
-        bubble_layout.setContentsMargins(12, 8, 12, 8)
+        bubble_layout.setContentsMargins(12, 10, 12, 10)
         
-        name_label = CaptionLabel(name, bubble)
-        
+        # Bubble Styling
+        if is_self:
+            # Self: Blue/Primary color background, White text
+            bubble.setStyleSheet("""
+                SimpleCardWidget {
+                    background-color: #0078D4;
+                    border: none;
+                    border-radius: 8px;
+                    border-top-right-radius: 0px;
+                }
+                SubtitleLabel, CaptionLabel {
+                    color: white;
+                }
+            """)
+        else:
+            # Other: White/Gray background, Black text
+            bubble.setStyleSheet("""
+                SimpleCardWidget {
+                    background-color: #f9f9f9;
+                    border: 1px solid #e5e5e5;
+                    border-radius: 8px;
+                    border-top-left-radius: 0px;
+                }
+                SubtitleLabel, CaptionLabel {
+                    color: black;
+                }
+            """)
+
+        # Message Content Processing
+        has_content = False
         if isinstance(message, list):
-            # Parse message segments
-            has_content = False
             for segment in message:
                 seg_type = segment.get("type")
                 seg_data = segment.get("data", {})
@@ -168,17 +215,17 @@ class ChatView(QWidget):
                         msg_label = SubtitleLabel(text, bubble)
                         setFont(msg_label, 14)
                         msg_label.setWordWrap(True)
-                        if is_self:
-                            msg_label.setStyleSheet("color: white;")
+                        # Text color handled by parent bubble stylesheet
                         bubble_layout.addWidget(msg_label)
                         has_content = True
                         
                 elif seg_type == "image":
-                    # Get image URL
                     image_url = seg_data.get("url") or seg_data.get("file")
                     if image_url:
                         try:
                             image_widget = ImageWidget(image_url, bubble)
+                            # Limit max width of images in bubble
+                            image_widget.setMaximumWidth(300)
                             bubble_layout.addWidget(image_widget)
                             has_content = True
                         except Exception as e:
@@ -190,8 +237,6 @@ class ChatView(QWidget):
             if not has_content:
                 msg_label = SubtitleLabel("[非文本消息]", bubble)
                 setFont(msg_label, 14)
-                if is_self:
-                    msg_label.setStyleSheet("color: white;")
                 bubble_layout.addWidget(msg_label)
         else:
             # Simple text message
@@ -199,19 +244,30 @@ class ChatView(QWidget):
             msg_label = SubtitleLabel(display_text, bubble)
             setFont(msg_label, 14)
             msg_label.setWordWrap(True)
-            if is_self:
-                msg_label.setStyleSheet("color: white;")
             bubble_layout.addWidget(msg_label)
         
-        row_layout = QHBoxLayout()
+        # Layout Assembly
         if is_self:
-            row_layout.addStretch(1)
-            row_layout.addWidget(bubble)
-        else:
-            row_layout.addWidget(bubble)
+            # Structure: [Stretch] [Content(Name+Bubble)] [Avatar]
             row_layout.addStretch(1)
             
-        self.scroll_layout.addLayout(row_layout)
+            content_layout.addWidget(name_label, 0, Qt.AlignmentFlag.AlignRight)
+            content_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignRight)
+            
+            row_layout.addLayout(content_layout)
+            row_layout.addWidget(avatar, 0, Qt.AlignmentFlag.AlignTop)
+        else:
+            # Structure: [Avatar] [Content(Name+Bubble)] [Stretch]
+            row_layout.addWidget(avatar, 0, Qt.AlignmentFlag.AlignTop)
+            
+            content_layout.addWidget(name_label, 0, Qt.AlignmentFlag.AlignLeft)
+            content_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignLeft)
+            
+            row_layout.addLayout(content_layout)
+            row_layout.addStretch(1)
+            
+        self.scroll_layout.addWidget(row_widget)
+        
         # Scroll to bottom
         QTimer.singleShot(10, lambda: self.scroll_area.verticalScrollBar().setValue(
             self.scroll_area.verticalScrollBar().maximum()
