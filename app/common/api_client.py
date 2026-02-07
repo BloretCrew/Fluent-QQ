@@ -101,4 +101,13 @@ class NapCatClient(QObject):
     def _on_error(self, ws, error):
         print(f"WebSocket Error: {error}")
 
+    def send_message(self, target_id, message, is_group=False):
+        """ Send message via HTTP API """
+        action = "send_group_msg" if is_group else "send_private_msg"
+        params = {
+            "group_id" if is_group else "user_id": int(target_id),
+            "message": message
+        }
+        return self.call_api(action, params)
+
 client = NapCatClient()

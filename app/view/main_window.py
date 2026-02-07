@@ -28,6 +28,7 @@ class MainWindow(FluentWindow):
         # Connect signals
         client.connected.connect(lambda: self.chatInterface.setConnected(True))
         client.disconnected.connect(lambda: self.chatInterface.setConnected(False))
+        client.messageReceived.connect(self.chatInterface.addMessage)
         
         # Start connection
         client.start_ws()
