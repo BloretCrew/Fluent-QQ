@@ -10,7 +10,7 @@ class MessageCard(SimpleCardWidget):
     """ Custom card to display message preview """
     openChatRequested = pyqtSignal(str, str, bool) # target_id, name, is_group
 
-    def __init__(self, name, message, time_str, is_group=False, target_id=None, parent=None):
+    def __init__(self, target_id, name, message, time_str, is_group=False, parent=None):
         super().__init__(parent=parent)
         self.target_id = str(target_id)
         self.target_name = name
@@ -66,6 +66,8 @@ class MessageCard(SimpleCardWidget):
         self.enter_btn.setFixedSize(32, 32)
         self.enter_btn.setIconSize(QSize(16, 16))
         self.enter_btn.clicked.connect(lambda: self.openChatRequested.emit(self.target_id, self.target_name, self.is_group))
+        
+        # Make whole card clickable
         self.clicked.connect(lambda: self.openChatRequested.emit(self.target_id, self.target_name, self.is_group))
         
         self.right_container.addWidget(self.time_label)
@@ -79,6 +81,7 @@ class ChatView(QWidget):
         super().__init__(parent=parent)
         self.target_id = target_id
         self.is_group = is_group
+        self.chat_name = name
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(20, 10, 20, 20)
         
@@ -127,6 +130,10 @@ class ChatView(QWidget):
 
     def loadHistory(self):
         """ Fetch and display recent chat history from NapCat """
+        if not self.target_id or str(self.target_id).lower() == 'none':
+            print(f"[UI] Invalid target_id for history loading: {self.target_id}")
+            return
+            
         res = client.get_history(self.target_id, self.is_group, count=20)
         if not res or res.get("status") != "ok":
             print(f"[UI] Failed to load history for {self.target_id}")
@@ -136,19 +143,8 @@ class ChatView(QWidget):
         for msg in messages:
             sender_name = msg.get("sender", {}).get("nickname", "用户")
             content = msg.get("message", "")
-            user_id = msg.get("user_id")
-            
-            # Format message
-            if isinstance(content, list):
-                display_msg = "".join([i.get("data", {}).get("text", "") for i in content if i.get("type") == "text"])
-                if not display_msg: display_msg = "[非文本消息]"
-            else:
-                display_msg = str(content)
-            
-            # Identify if it's from current user (this client doesn't know self ID easily yet, 
-            # but usually sender ID is different)
-            # For now, just display normally. If we have self ID we can set is_self.
-            self.addMessage(sender_name, display_msg, is_self=False)
+            # Identification of self can be improved if we have current login ID
+            self.addMessage(sender_name, content, is_self=False)
 
     def addMessage(self, name, message, is_self=False):
         bubble = SimpleCardWidget(self.scroll_widget)
@@ -156,7 +152,14 @@ class ChatView(QWidget):
         bubble_layout.setContentsMargins(12, 8, 12, 8)
         
         name_label = CaptionLabel(name, bubble)
-        msg_label = SubtitleLabel(message, bubble)
+        
+        if isinstance(message, list):
+            display_text = "".join([i.get("data", {}).get("text", "") for i in message if i.get("type") == "text"])
+            if not display_text: display_text = "[非文本消息]"
+        else:
+            display_text = str(message)
+            
+        msg_label = SubtitleLabel(display_text, bubble)
         setFont(msg_label, 14)
         msg_label.setWordWrap(True)
         
@@ -179,7 +182,7 @@ class ChatView(QWidget):
             row_layout.addStretch(1)
             
         self.scroll_layout.addLayout(row_layout)
-        # Scroll to bottom after layout update
+        # Scroll to bottom
         QTimer.singleShot(10, lambda: self.scroll_area.verticalScrollBar().setValue(
             self.scroll_area.verticalScrollBar().maximum()
         ))
@@ -188,7 +191,6 @@ class ChatView(QWidget):
         msg = self.input_edit.text().strip()
         if not msg: return
         
-        # Actual API Call
         res = client.send_message(self.target_id, msg, self.is_group)
         if res:
             self.addMessage("我", msg, is_self=True)
@@ -211,12 +213,12 @@ class ChatInterface(QFrame):
         self.top_tab_bar.setCloseButtonDisplayMode(TabCloseButtonDisplayMode.ALWAYS)
         
         self.top_tab_bar.addTab("msg_center", "消息中心", FIF.MESSAGE)
-        self.top_tab_bar.tabBar.tabs["msg_center"].setClosable(False)
         self.top_tab_bar.setAddButtonVisible(True)
         
-        self.top_tab_bar.currentChanged.connect(lambda i: self.onTabChanged(self.top_tab_bar.currentTab()))
+        self.top_tab_bar.currentChanged.connect(self.onTabChanged)
         self.top_tab_bar.tabCloseRequested.connect(self.onTabClose)
-        self.top_tab_bar.tabAddRequested.connect(lambda: self.top_tab_bar.setCurrentTab("msg_center"))
+        self.top_tab_bar.tabAddRequested.connect(self.goHome)
+        self.top_tab_bar.tabBarClicked.connect(self.onTabBarClicked)
         
         # 1. Main Stack
         self.stacked_widget = QStackedWidget(self)
@@ -225,12 +227,10 @@ class ChatInterface(QFrame):
         self.msg_center_page = QWidget()
         self.msg_center_layout = QVBoxLayout(self.msg_center_page)
         self.msg_center_layout.setContentsMargins(0, 0, 0, 0)
-        self.msg_center_layout.setSpacing(0)
         
         self.header = QWidget()
         self.header_layout = QVBoxLayout(self.header)
         self.header_layout.setContentsMargins(36, 20, 36, 12)
-        
         self.title_label = SubtitleLabel("消息中心", self)
         setFont(self.title_label, 28, weight=600)
         self.status_label = CaptionLabel("正在连接服务器...", self)
@@ -259,27 +259,64 @@ class ChatInterface(QFrame):
         self.msg_center_layout.addWidget(self.scroll_area)
         
         self.stacked_widget.addWidget(self.msg_center_page)
-        
         self.layout.addWidget(self.top_tab_bar)
         self.layout.addWidget(self.stacked_widget)
-        
-        self.setObjectName("chatInterface")
         
         # State
         self.cards = {}
         self.chats = {} # routeKey -> ChatView instance
+        self.contact_map = {} # ID -> Name
+        
+        self.setObjectName("chatInterface")
+        
+        # Load Data
+        QTimer.singleShot(500, self.loadInitialData)
+
+    def loadInitialData(self):
+        """ Startup data loading """
+        # Groups
+        res = client.get_group_list()
+        if res and res.get("status") == "ok":
+            for g in res.get("data", []):
+                self.contact_map[str(g["group_id"])] = g.get("group_name", f"群 {g['group_id']}")
+        
+        # Friends
+        res = client.get_friend_list()
+        if res and res.get("status") == "ok":
+            for f in res.get("data", []):
+                self.contact_map[str(f["user_id"])] = f.get("nickname", f"用户 {f['user_id']}")
+        
+        print(f"[UI] Loaded {len(self.contact_map)} contacts")
+        
+        # Recent Messages
+        res = client.get_recent_contact()
+        if res and res.get("status") == "ok":
+            for c in res.get("data", []):
+                is_group = c.get("type") == "group"
+                raw_id = c.get("group_id") if is_group else c.get("user_id")
+                if raw_id is None: continue
+                
+                target_id = str(raw_id)
+                name = self.contact_map.get(target_id, target_id)
+                last_msg = c.get("last_msg", {}).get("text", "[无消息]")
+                self._update_or_create_card(target_id, name, last_msg, "历史", is_group)
+
+    def goHome(self):
         self.top_tab_bar.setCurrentTab("msg_center")
+        self.stacked_widget.setCurrentWidget(self.msg_center_page)
+
+    def onTabBarClicked(self, index):
+        # Explicit check if home tab clicked
+        if index == 0:
+            self.goHome()
 
     def onTabChanged(self, index_or_key):
-        # The signal might pass an index, so we always get the current key from the bar
         routeKey = self.top_tab_bar.currentTab()
-        print(f"[UI] Tab changed to: {routeKey}")
-        
         if routeKey == "msg_center":
             self.stacked_widget.setCurrentWidget(self.msg_center_page)
         elif routeKey in self.chats:
             self.stacked_widget.setCurrentWidget(self.chats[routeKey])
-        
+
     def onTabClose(self, routeKey):
         if routeKey == "msg_center": return
         if routeKey in self.chats:
@@ -287,21 +324,19 @@ class ChatInterface(QFrame):
             self.stacked_widget.removeWidget(view)
             view.deleteLater()
             self.top_tab_bar.removeTab(routeKey)
-            
-            # If no tabs left or we just closed the active tab, go back to msg_center
             if self.top_tab_bar.currentTab() == "":
-                self.top_tab_bar.setCurrentTab("msg_center")
-                self.stacked_widget.setCurrentWidget(self.msg_center_page)
+                self.goHome()
 
     def openChat(self, target_id, name, is_group):
         routeKey = f"chat_{target_id}"
         if routeKey not in self.chats:
-            view = ChatView(target_id, name, is_group, self)
+            # Resolve name if it looks like ID
+            real_name = self.contact_map.get(target_id, name)
+            view = ChatView(target_id, real_name, is_group, self)
             self.chats[routeKey] = view
             self.stacked_widget.addWidget(view)
-            self.top_tab_bar.addTab(routeKey, name, FIF.PEOPLE if is_group else FIF.CHAT)
-            
-        # Programmatically switch tab AND switch stack
+            self.top_tab_bar.addTab(routeKey, real_name, FIF.PEOPLE if is_group else FIF.CHAT)
+        
         self.top_tab_bar.setCurrentTab(routeKey)
         self.stacked_widget.setCurrentWidget(self.chats[routeKey])
 
@@ -322,33 +357,36 @@ class ChatInterface(QFrame):
     def addMessage(self, data: dict):
         post_type = data.get("post_type")
         if post_type != "message": return
-            
+        
         message_type = data.get("message_type")
-        name = data.get("sender", {}).get("nickname", "用户")
-        user_id = data.get("user_id")
-        content = data.get("message", "")
-        time_str = "刚刚"
-        
+        sender_name = data.get("sender", {}).get("nickname", "用户")
         is_group = message_type == "group"
-        target_id = data.get("group_id") if is_group else user_id
-        target_id = str(target_id)
         
+        raw_id = data.get("group_id") if is_group else data.get("user_id")
+        if raw_id is None: return
+        
+        target_id = str(raw_id)
+        content = data.get("message", "")
+        
+        # Use Cache
+        target_name = self.contact_map.get(target_id, sender_name if not is_group else f"群聊 {target_id}")
         display_text = self.format_message(content)
         
+        self._update_or_create_card(target_id, target_name, display_text, "刚刚", is_group)
+        
+        routeKey = f"chat_{target_id}"
+        if routeKey in self.chats:
+            self.chats[routeKey].addMessage(sender_name, content)
+
+    def _update_or_create_card(self, target_id, name, text, time_str, is_group):
         if target_id in self.cards:
             card = self.cards[target_id]
-            summary = display_text[:50] + "..." if len(display_text) > 50 else display_text
+            summary = text[:50] + "..." if len(text) > 50 else text
             card.msg_label.setText(summary)
             self.scroll_layout.removeWidget(card)
             self.scroll_layout.insertWidget(0, card)
         else:
-            card = MessageCard(name if not is_group else f"群聊 {target_id}", content, time_str, is_group, target_id)
+            card = MessageCard(target_id, name, text, time_str, is_group, self.scroll_widget)
             card.openChatRequested.connect(self.openChat)
             self.cards[target_id] = card
             self.scroll_layout.insertWidget(0, card)
-            
-        routeKey = f"chat_{target_id}"
-        if routeKey in self.chats:
-            self.chats[routeKey].addMessage(name, display_text)
-            
-        self.scroll_widget.update()

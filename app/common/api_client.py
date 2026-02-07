@@ -101,22 +101,52 @@ class NapCatClient(QObject):
     def _on_error(self, ws, error):
         print(f"WebSocket Error: {error}")
 
+    def _to_id(self, val):
+        try:
+            if val is None or str(val).lower() == 'none':
+                return None
+            return int(val)
+        except (ValueError, TypeError):
+            return None
+
     def send_message(self, target_id, message, is_group=False):
         """ Send message via HTTP API """
+        tid = self._to_id(target_id)
+        if tid is None:
+            print(f"[Client] Invalid target_id: {target_id}")
+            return None
+            
         action = "send_group_msg" if is_group else "send_private_msg"
         params = {
-            "group_id" if is_group else "user_id": int(target_id),
+            "group_id" if is_group else "user_id": tid,
             "message": message
         }
         return self.call_api(action, params)
 
     def get_history(self, target_id, is_group=False, count=20):
         """ Get message history from NapCat """
+        tid = self._to_id(target_id)
+        if tid is None:
+            print(f"[Client] Invalid target_id for history: {target_id}")
+            return None
+
         action = "get_group_msg_history" if is_group else "get_private_msg_history"
         params = {
-            "group_id" if is_group else "user_id": int(target_id),
+            "group_id" if is_group else "user_id": tid,
             "count": count
         }
         return self.call_api(action, params)
+
+    def get_group_list(self):
+        """ Get group list """
+        return self.call_api("get_group_list")
+
+    def get_friend_list(self):
+        """ Get friend list """
+        return self.call_api("get_friend_list")
+
+    def get_recent_contact(self):
+        """ Get recent contact list (NapCat extension) """
+        return self.call_api("get_recent_contact")
 
 client = NapCatClient()

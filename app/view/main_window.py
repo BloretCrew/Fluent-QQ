@@ -41,8 +41,8 @@ class MainWindow(FluentWindow):
 
     def initWindow(self):
         self.resize(1000, 700)
-        # self.setWindowIcon(QIcon(":/app/resource/logo.png"))
-        self.setWindowTitle("Fluent-QQ")
+        self.setWindowIcon(QIcon("qq.png"))
+        self.setWindowTitle("Fluent QQ")
         
         # Apply theme
         self.applyTheme(config.get("theme"))
