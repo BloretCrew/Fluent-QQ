@@ -30,8 +30,18 @@ class MainWindow(FluentWindow):
         client.disconnected.connect(lambda: self.chatInterface.setConnected(False))
         client.messageReceived.connect(self.chatInterface.addMessage)
         
+        # Connect contact interface to chat
+        self.contactInterface.openChatRequested.connect(self.openChatFromContact)
+        
         # Start connection
         client.start_ws()
+    
+    def openChatFromContact(self, target_id, name, is_group):
+        """ Open chat from contact interface and switch to chat tab """
+        # Switch to chat interface
+        self.switchTo(self.chatInterface)
+        # Open the chat
+        self.chatInterface.openChat(target_id, name, is_group)
 
     def initNavigation(self):
         self.addSubInterface(self.chatInterface, FIF.MESSAGE, "消息")

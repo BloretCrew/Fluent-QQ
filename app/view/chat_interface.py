@@ -10,11 +10,12 @@ class MessageCard(SimpleCardWidget):
     """ Custom card to display message preview """
     openChatRequested = pyqtSignal(str, str, bool) # target_id, name, is_group
 
-    def __init__(self, target_id, name, message, time_str, is_group=False, parent=None):
+    def __init__(self, target_id, name, message, time_str, is_group=False, card_type="recent", parent=None):
         super().__init__(parent=parent)
         self.target_id = str(target_id)
         self.target_name = name
         self.is_group = is_group
+        self.card_type = card_type # "recent", "friends", "groups"
         
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(15, 12, 15, 12)
@@ -240,6 +241,7 @@ class ChatInterface(QFrame):
         self.tab_bar.addItem("friends", "好友列表")
         self.tab_bar.addItem("groups", "群组列表")
         self.tab_bar.setCurrentItem("recent")
+        self.tab_bar.currentItemChanged.connect(self.onSegmentedChanged)
         
         self.header_layout.addWidget(self.title_label)
         self.header_layout.addWidget(self.status_label)
@@ -265,7 +267,9 @@ class ChatInterface(QFrame):
         # State
         self.cards = {}
         self.chats = {} # routeKey -> ChatView instance
-        self.contact_map = {} # ID -> Name
+        self.friend_list = {} # ID -> Name
+        self.group_list = {} # ID -> Name
+        self.contact_map = {} # ID -> Name (full cache)
         
         self.setObjectName("chatInterface")
         
@@ -278,15 +282,21 @@ class ChatInterface(QFrame):
         res = client.get_group_list()
         if res and res.get("status") == "ok":
             for g in res.get("data", []):
-                self.contact_map[str(g["group_id"])] = g.get("group_name", f"群 {g['group_id']}")
+                gid = str(g["group_id"])
+                name = g.get("group_name", f"群 {gid}")
+                self.group_list[gid] = name
+                self.contact_map[gid] = name
         
         # Friends
         res = client.get_friend_list()
         if res and res.get("status") == "ok":
             for f in res.get("data", []):
-                self.contact_map[str(f["user_id"])] = f.get("nickname", f"用户 {f['user_id']}")
+                uid = str(f["user_id"])
+                name = f.get("nickname", f"用户 {uid}")
+                self.friend_list[uid] = name
+                self.contact_map[uid] = name
         
-        print(f"[UI] Loaded {len(self.contact_map)} contacts")
+        print(f"[UI] Loaded {len(self.friend_list)} friends and {len(self.group_list)} groups")
         
         # Recent Messages
         res = client.get_recent_contact()
@@ -299,7 +309,26 @@ class ChatInterface(QFrame):
                 target_id = str(raw_id)
                 name = self.contact_map.get(target_id, target_id)
                 last_msg = c.get("last_msg", {}).get("text", "[无消息]")
-                self._update_or_create_card(target_id, name, last_msg, "历史", is_group)
+                self._update_or_create_card(target_id, name, last_msg, "历史", is_group, "recent")
+        
+        # Populate Friends Tab
+        for tid, name in self.friend_list.items():
+            self._update_or_create_card(tid, name, "[点击开始聊天]", "", False, "friends")
+            
+        # Populate Groups Tab
+        for tid, name in self.group_list.items():
+            self._update_or_create_card(tid, name, "[点击查看群聊]", "", True, "groups")
+
+        # Initial view: only "recent" visible
+        self.onSegmentedChanged("recent")
+
+    def onSegmentedChanged(self, key):
+        """ Filter cards based on selected tab """
+        print(f"[UI] Switching list to: {key}")
+        for card_key, card in self.cards.items():
+            # card_key is "type:id"
+            ctype, _ = card_key.split(":", 1)
+            card.setVisible(ctype == key)
 
     def goHome(self):
         self.top_tab_bar.setCurrentTab("msg_center")
@@ -311,21 +340,70 @@ class ChatInterface(QFrame):
             self.goHome()
 
     def onTabChanged(self, index_or_key):
-        routeKey = self.top_tab_bar.currentTab()
+        current_tab = self.top_tab_bar.currentTab()
+        # Extract routeKey from TabItem object
+        if hasattr(current_tab, 'routeKey'):
+            routeKey = current_tab.routeKey()
+        else:
+            routeKey = str(current_tab)
+        
+        print(f"[UI] Tab changed to: {routeKey}")
+        
         if routeKey == "msg_center":
             self.stacked_widget.setCurrentWidget(self.msg_center_page)
+            print(f"[UI] Switched to message center")
         elif routeKey in self.chats:
             self.stacked_widget.setCurrentWidget(self.chats[routeKey])
+            print(f"[UI] Switched to chat: {routeKey}")
+        else:
+            print(f"[UI] Warning: Unknown route key: {routeKey}")
 
-    def onTabClose(self, routeKey):
-        if routeKey == "msg_center": return
+    def onTabClose(self, index_or_key):
+        print(f"[UI] Tab close requested for: {index_or_key} (type: {type(index_or_key)})")
+        
+        # If it's an integer, it's the tab index - we need to get the routeKey
+        if isinstance(index_or_key, int):
+            tab_index = index_or_key
+            tab_item = self.top_tab_bar.tabItem(tab_index)
+            if tab_item and hasattr(tab_item, 'routeKey'):
+                routeKey = tab_item.routeKey()
+            else:
+                print(f"[UI] Warning: Could not get routeKey from tab at index {tab_index}")
+                return
+        else:
+            routeKey = index_or_key
+            # Need to find the index for this routeKey
+            tab_index = None
+            for i in range(self.top_tab_bar.count()):
+                item = self.top_tab_bar.tabItem(i)
+                if item and hasattr(item, 'routeKey') and item.routeKey() == routeKey:
+                    tab_index = i
+                    break
+        
+        print(f"[UI] Resolved routeKey: {routeKey}")
+        
+        if routeKey == "msg_center": 
+            print("[UI] Cannot close message center tab")
+            return
+            
         if routeKey in self.chats:
+            print(f"[UI] Closing chat: {routeKey}")
             view = self.chats.pop(routeKey)
             self.stacked_widget.removeWidget(view)
             view.deleteLater()
-            self.top_tab_bar.removeTab(routeKey)
-            if self.top_tab_bar.currentTab() == "":
+            
+            # Remove tab by index if we have it, otherwise by routeKey
+            if tab_index is not None:
+                self.top_tab_bar.removeTab(tab_index)
+            else:
+                self.top_tab_bar.removeTab(routeKey)
+            
+            # Check if we need to go home
+            current_tab = self.top_tab_bar.currentTab()
+            if current_tab is None or (hasattr(current_tab, 'routeKey') and current_tab.routeKey() == ""):
                 self.goHome()
+        else:
+            print(f"[UI] Warning: routeKey {routeKey} not found in chats")
 
     def openChat(self, target_id, name, is_group):
         routeKey = f"chat_{target_id}"
@@ -378,15 +456,17 @@ class ChatInterface(QFrame):
         if routeKey in self.chats:
             self.chats[routeKey].addMessage(sender_name, content)
 
-    def _update_or_create_card(self, target_id, name, text, time_str, is_group):
-        if target_id in self.cards:
-            card = self.cards[target_id]
+    def _update_or_create_card(self, target_id, name, text, time_str, is_group, card_type="recent"):
+        card_key = f"{card_type}:{target_id}"
+        if card_key in self.cards:
+            card = self.cards[card_key]
             summary = text[:50] + "..." if len(text) > 50 else text
             card.msg_label.setText(summary)
-            self.scroll_layout.removeWidget(card)
-            self.scroll_layout.insertWidget(0, card)
+            if card_type == "recent":
+                self.scroll_layout.removeWidget(card)
+                self.scroll_layout.insertWidget(0, card)
         else:
-            card = MessageCard(target_id, name, text, time_str, is_group, self.scroll_widget)
+            card = MessageCard(target_id, name, text, time_str, is_group, card_type, self.scroll_widget)
             card.openChatRequested.connect(self.openChat)
-            self.cards[target_id] = card
-            self.scroll_layout.insertWidget(0, card)
+            self.cards[card_key] = card
+            self.scroll_layout.addWidget(card)

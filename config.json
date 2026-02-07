@@ -2,7 +2,7 @@
     "null": {
         "api_url": "http://127.0.0.1:3000",
         "language": "zh_CN",
-        "theme": "Auto",
+        "theme": "Light",
         "token": "shenmitoken",
         "ws_url": "ws://127.0.0.1:3001"
     },
