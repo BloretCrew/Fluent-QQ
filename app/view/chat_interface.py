@@ -7,6 +7,7 @@ from app.common.api_client import client
 from app.view.components.image_widget import ImageWidget
 from app.view.components.avatar_widget import AvatarWidget
 from app.view.components.chat_bubble import ChatBubble
+from app.common.time_utils import get_relative_time
 from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton,
                             FluentIcon as FIF, TabBar, TabCloseButtonDisplayMode, SegmentedWidget,
                             SimpleCardWidget, IconWidget, LineEdit, PrimaryPushButton, qconfig, Theme, isDarkTheme)
@@ -154,6 +155,59 @@ class ChatView(QWidget):
         
         # Load History
         QTimer.singleShot(100, self.loadHistory)
+        
+        self.message_widgets = {} # message_id -> row_widget
+
+    def onRecallRequested(self, message_id):
+        """ Handle message recall """
+        print(f"[ChatView] Recalling message: {message_id}")
+        res = client.delete_msg(message_id)
+        if res and res.get("status") == "ok":
+            # Remove from UI
+            if message_id in self.message_widgets:
+                widget = self.message_widgets.pop(message_id)
+                self.scroll_layout.removeWidget(widget)
+                widget.deleteLater()
+                print(f"[ChatView] Message {message_id} removed from UI")
+        else:
+            print(f"[ChatView] Failed to recall message {message_id}")
+            from qfluentwidgets import InfoBar, InfoBarPosition
+            InfoBar.error(
+                title='撤回失败',
+                content='无法撤回该消息，可能已超过时限。',
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=2000,
+                parent=self
+            )
+
+    def onReactRequested(self, message_id, emoji_id):
+        """ Handle emoji reaction """
+        print(f"[ChatView] Reacting to message: {message_id} with {emoji_id}")
+        res = client.set_msg_emoji_like(message_id, emoji_id)
+        if res and res.get("status") == "ok":
+            from qfluentwidgets import InfoBar, InfoBarPosition
+            InfoBar.success(
+                title='回应成功',
+                content='已发送表情回应',
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=2000,
+                parent=self
+            )
+        else:
+            from qfluentwidgets import InfoBar, InfoBarPosition
+            InfoBar.error(
+                title='回应失败',
+                content='无法发送表情回应',
+                orient=Qt.Orientation.Horizontal,
+                isClosable=True,
+                position=InfoBarPosition.TOP,
+                duration=2000,
+                parent=self
+            )
 
     def loadHistory(self):
         """ Fetch and display recent chat history from NapCat """
@@ -167,17 +221,24 @@ class ChatView(QWidget):
             return
             
         messages = res.get("data", {}).get("messages", [])
-        for msg in messages:
+        for i, msg in enumerate(messages):
             sender = msg.get("sender", {})
             sender_name = sender.get("nickname", "用户")
             sender_id = sender.get("user_id")
             content = msg.get("message", "")
+            time_val = msg.get("time")
+            time_str = get_relative_time(time_val)
+            msg_id = str(msg.get("message_id")) if msg.get("message_id") else None
+            
+            # PROBE: Print message structure to check for emoji likes
+            if i == 0:
+                print(f"[PROBE] Message Structure: {json.dumps(msg, indent=2, ensure_ascii=False)}")
             
             avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
             # Identification of self can be improved if we have current login ID
-            self.addMessage(sender_name, content, is_self=False, avatar_url=avatar_url)
+            self.addMessage(sender_name, content, is_self=False, avatar_url=avatar_url, message_id=msg_id, time_str=time_str)
 
-    def addMessage(self, name, message, is_self=False, avatar_url=None):
+    def addMessage(self, name, message, is_self=False, avatar_url=None, message_id=None, time_str=""):
         """ Add a message to the chat view """
         # Main container for the message row
         row_widget = QWidget()
@@ -197,12 +258,37 @@ class ChatView(QWidget):
         content_layout.setSpacing(4)
         content_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Name Label
-        name_label = CaptionLabel(name, row_widget)
-        # name_label.setStyleSheet("color: #666666;") # Removed for theme adaptation
+        # Name & Time Container
+        name_container = QWidget()
+        name_layout = QHBoxLayout(name_container)
+        name_layout.setContentsMargins(0, 0, 0, 0)
+        name_layout.setSpacing(8)
+        
+        if is_self:
+             name_layout.addStretch(1)
+             if time_str:
+                 time_label = CaptionLabel(time_str, name_container)
+                 time_label.setStyleSheet("color: #999999;")
+                 name_layout.addWidget(time_label)
+             name_label = CaptionLabel(name, name_container)
+             name_layout.addWidget(name_label)
+        else:
+             name_label = CaptionLabel(name, name_container)
+             name_layout.addWidget(name_label)
+             if time_str:
+                 time_label = CaptionLabel(time_str, name_container)
+                 time_label.setStyleSheet("color: #999999;")
+                 name_layout.addWidget(time_label)
+             name_layout.addStretch(1)
         
         # Bubble Container
-        bubble = ChatBubble(is_self, row_widget)
+        bubble = ChatBubble(is_self, message_id, row_widget)
+        if message_id:
+            bubble.recallRequested.connect(self.onRecallRequested)
+            bubble.reactRequested.connect(self.onReactRequested)
+            # Store widget for recall
+            self.message_widgets[str(message_id)] = row_widget
+
         bubble_layout = QVBoxLayout(bubble)
         bubble_layout.setContentsMargins(12, 10, 12, 10)
 
@@ -255,7 +341,7 @@ class ChatView(QWidget):
             # Structure: [Stretch] [Content(Name+Bubble)] [Avatar]
             row_layout.addStretch(1)
             
-            content_layout.addWidget(name_label, 0, Qt.AlignmentFlag.AlignRight)
+            content_layout.addWidget(name_container, 0, Qt.AlignmentFlag.AlignRight)
             content_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignRight)
             
             row_layout.addLayout(content_layout)
@@ -264,7 +350,7 @@ class ChatView(QWidget):
             # Structure: [Avatar] [Content(Name+Bubble)] [Stretch]
             row_layout.addWidget(avatar, 0, Qt.AlignmentFlag.AlignTop)
             
-            content_layout.addWidget(name_label, 0, Qt.AlignmentFlag.AlignLeft)
+            content_layout.addWidget(name_container, 0, Qt.AlignmentFlag.AlignLeft)
             content_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignLeft)
             
             row_layout.addLayout(content_layout)
@@ -282,8 +368,9 @@ class ChatView(QWidget):
         if not msg: return
         
         res = client.send_message(self.target_id, msg, self.is_group)
-        if res:
-            self.addMessage("我", msg, is_self=True)
+        if res and res.get("status") == "ok":
+            message_id = str(res.get("data", {}).get("message_id"))
+            self.addMessage("我", msg, is_self=True, message_id=message_id)
             self.input_edit.clear()
         else:
             self.addMessage("系统", "消息发送失败，请检查连接", is_self=False)
@@ -545,7 +632,8 @@ class ChatInterface(QFrame):
         if routeKey in self.chats:
             sender_id = data.get("sender", {}).get("user_id")
             avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
-            self.chats[routeKey].addMessage(sender_name, content, avatar_url=avatar_url)
+            msg_id = str(data.get("message_id")) if data.get("message_id") else None
+            self.chats[routeKey].addMessage(sender_name, content, avatar_url=avatar_url, message_id=msg_id)
 
     def _update_or_create_card(self, target_id, name, text, time_str, is_group, card_type="recent"):
         card_key = f"{card_type}:{target_id}"

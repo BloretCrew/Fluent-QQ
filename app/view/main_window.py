@@ -116,9 +116,9 @@ class MainWindow(FluentWindow):
         """ Override close event to minimize to tray """
         event.ignore()
         self.hide()
-        self.tray_icon.showMessage(
-            "Fluent QQ",
-            "程序已最小化到系统托盘",
-            QSystemTrayIcon.MessageIcon.Information,
-            2000
-        )
+        # self.tray_icon.showMessage(
+        #     "Fluent QQ",
+        #     "程序已最小化到系统托盘",
+        #     QSystemTrayIcon.MessageIcon.Information,
+        #     2000
+        # )

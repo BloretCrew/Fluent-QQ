@@ -123,6 +123,22 @@ class NapCatClient(QObject):
         }
         return self.call_api(action, params)
 
+    def delete_msg(self, message_id):
+        """ Recall/Withdraw message """
+        if not message_id:
+            return None
+        return self.call_api("delete_msg", {"message_id": message_id})
+
+    def set_msg_emoji_like(self, message_id, emoji_id, set_like=True):
+        """ Set emoji reaction on a message """
+        if not message_id or not emoji_id:
+            return None
+        return self.call_api("set_msg_emoji_like", {
+            "message_id": message_id,
+            "emoji_id": str(emoji_id),
+            "set": set_like
+        })
+
     def get_history(self, target_id, is_group=False, count=20):
         """ Get message history from NapCat """
         tid = self._to_id(target_id)
