@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy, QStackedWidget
 from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton,
                             FluentIcon as FIF, TabBar, TabCloseButtonDisplayMode, SegmentedWidget,
-                            SimpleCardWidget, IconWidget, LineEdit)
+                            SimpleCardWidget, IconWidget, LineEdit, PrimaryPushButton)
 from app.common.api_client import client
 from app.view.components.image_widget import ImageWidget
 import json
