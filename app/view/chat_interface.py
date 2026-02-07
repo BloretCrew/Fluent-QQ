@@ -1,9 +1,10 @@
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy, QStackedWidget
-from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton, PrimaryPushButton,
-                            FluentIcon as FIF, SegmentedWidget, SimpleCardWidget, AvatarWidget, TabBar, IconWidget, TextEdit,
-                            TabCloseButtonDisplayMode, LineEdit)
+from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton,
+                            FluentIcon as FIF, TabBar, TabCloseButtonDisplayMode, SegmentedWidget,
+                            SimpleCardWidget, IconWidget, LineEdit)
 from app.common.api_client import client
+from app.view.components.image_widget import ImageWidget
 import json
 
 class MessageCard(SimpleCardWidget):
@@ -155,24 +156,52 @@ class ChatView(QWidget):
         name_label = CaptionLabel(name, bubble)
         
         if isinstance(message, list):
-            display_text = "".join([i.get("data", {}).get("text", "") for i in message if i.get("type") == "text"])
-            if not display_text: display_text = "[非文本消息]"
+            # Parse message segments
+            has_content = False
+            for segment in message:
+                seg_type = segment.get("type")
+                seg_data = segment.get("data", {})
+                
+                if seg_type == "text":
+                    text = seg_data.get("text", "")
+                    if text:
+                        msg_label = SubtitleLabel(text, bubble)
+                        setFont(msg_label, 14)
+                        msg_label.setWordWrap(True)
+                        if is_self:
+                            msg_label.setStyleSheet("color: white;")
+                        bubble_layout.addWidget(msg_label)
+                        has_content = True
+                        
+                elif seg_type == "image":
+                    # Get image URL
+                    image_url = seg_data.get("url") or seg_data.get("file")
+                    if image_url:
+                        try:
+                            image_widget = ImageWidget(image_url, bubble)
+                            bubble_layout.addWidget(image_widget)
+                            has_content = True
+                        except Exception as e:
+                            print(f"[ChatView] Failed to create image widget: {e}")
+                            error_label = CaptionLabel("[图片加载失败]", bubble)
+                            bubble_layout.addWidget(error_label)
+                            has_content = True
+            
+            if not has_content:
+                msg_label = SubtitleLabel("[非文本消息]", bubble)
+                setFont(msg_label, 14)
+                if is_self:
+                    msg_label.setStyleSheet("color: white;")
+                bubble_layout.addWidget(msg_label)
         else:
+            # Simple text message
             display_text = str(message)
-            
-        msg_label = SubtitleLabel(display_text, bubble)
-        setFont(msg_label, 14)
-        msg_label.setWordWrap(True)
-        
-        if is_self:
-            name_label.setStyleSheet("color: rgba(255, 255, 255, 0.8);")
-            msg_label.setStyleSheet("color: white;")
-            bubble.setStyleSheet("background-color: #009faa; border-radius: 12px; border: none;")
-        else:
-            bubble.setStyleSheet("background-color: #f3f3f3; border-radius: 12px; border: none;")
-            
-        bubble_layout.addWidget(name_label)
-        bubble_layout.addWidget(msg_label)
+            msg_label = SubtitleLabel(display_text, bubble)
+            setFont(msg_label, 14)
+            msg_label.setWordWrap(True)
+            if is_self:
+                msg_label.setStyleSheet("color: white;")
+            bubble_layout.addWidget(msg_label)
         
         row_layout = QHBoxLayout()
         if is_self:
