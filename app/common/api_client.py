@@ -110,4 +110,13 @@ class NapCatClient(QObject):
         }
         return self.call_api(action, params)
 
+    def get_history(self, target_id, is_group=False, count=20):
+        """ Get message history from NapCat """
+        action = "get_group_msg_history" if is_group else "get_private_msg_history"
+        params = {
+            "group_id" if is_group else "user_id": int(target_id),
+            "count": count
+        }
+        return self.call_api(action, params)
+
 client = NapCatClient()

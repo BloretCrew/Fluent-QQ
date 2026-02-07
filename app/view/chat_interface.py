@@ -2,7 +2,7 @@ from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy, QStackedWidget
 from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton, PrimaryPushButton,
                             FluentIcon as FIF, SegmentedWidget, SimpleCardWidget, AvatarWidget, TabBar, IconWidget, TextEdit,
-                            TabCloseButtonDisplayMode)
+                            TabCloseButtonDisplayMode, LineEdit)
 from app.common.api_client import client
 import json
 
@@ -100,23 +100,55 @@ class ChatView(QWidget):
         
         # Input Area
         self.input_area_widget = QWidget()
-        self.input_area_layout = QVBoxLayout(self.input_area_widget)
+        self.input_area_layout = QHBoxLayout(self.input_area_widget)
         self.input_area_layout.setContentsMargins(0, 10, 0, 0)
+        self.input_area_layout.setSpacing(10)
         
-        self.input_edit = TextEdit(self)
+        self.upload_btn = TransparentPushButton(FIF.ADD, "", self)
+        self.upload_btn.setFixedSize(32, 32)
+        
+        self.input_edit = LineEdit(self)
         self.input_edit.setPlaceholderText("在此输入消息...")
-        self.input_edit.setFixedHeight(100)
+        self.input_edit.returnPressed.connect(self.sendMessage)
         
         self.send_btn = PrimaryPushButton("发送", self)
-        self.send_btn.setFixedWidth(100)
         self.send_btn.clicked.connect(self.sendMessage)
         
-        self.input_area_layout.addWidget(self.input_edit)
-        self.input_area_layout.addWidget(self.send_btn, 0, Qt.AlignmentFlag.AlignRight)
+        self.input_area_layout.addWidget(self.upload_btn)
+        self.input_area_layout.addWidget(self.input_edit, 1)
+        self.input_area_layout.addWidget(self.send_btn)
         
         self.layout.addLayout(self.header)
         self.layout.addWidget(self.scroll_area)
         self.layout.addWidget(self.input_area_widget)
+        
+        # Load History
+        QTimer.singleShot(100, self.loadHistory)
+
+    def loadHistory(self):
+        """ Fetch and display recent chat history from NapCat """
+        res = client.get_history(self.target_id, self.is_group, count=20)
+        if not res or res.get("status") != "ok":
+            print(f"[UI] Failed to load history for {self.target_id}")
+            return
+            
+        messages = res.get("data", {}).get("messages", [])
+        for msg in messages:
+            sender_name = msg.get("sender", {}).get("nickname", "用户")
+            content = msg.get("message", "")
+            user_id = msg.get("user_id")
+            
+            # Format message
+            if isinstance(content, list):
+                display_msg = "".join([i.get("data", {}).get("text", "") for i in content if i.get("type") == "text"])
+                if not display_msg: display_msg = "[非文本消息]"
+            else:
+                display_msg = str(content)
+            
+            # Identify if it's from current user (this client doesn't know self ID easily yet, 
+            # but usually sender ID is different)
+            # For now, just display normally. If we have self ID we can set is_self.
+            self.addMessage(sender_name, display_msg, is_self=False)
 
     def addMessage(self, name, message, is_self=False):
         bubble = SimpleCardWidget(self.scroll_widget)
@@ -147,10 +179,13 @@ class ChatView(QWidget):
             row_layout.addStretch(1)
             
         self.scroll_layout.addLayout(row_layout)
-        QTimer.singleShot(50, self.scroll_area.scrollToBottom)
+        # Scroll to bottom after layout update
+        QTimer.singleShot(10, lambda: self.scroll_area.verticalScrollBar().setValue(
+            self.scroll_area.verticalScrollBar().maximum()
+        ))
 
     def sendMessage(self):
-        msg = self.input_edit.toPlainText().strip()
+        msg = self.input_edit.text().strip()
         if not msg: return
         
         # Actual API Call
@@ -176,8 +211,12 @@ class ChatInterface(QFrame):
         self.top_tab_bar.setCloseButtonDisplayMode(TabCloseButtonDisplayMode.ALWAYS)
         
         self.top_tab_bar.addTab("msg_center", "消息中心", FIF.MESSAGE)
-        self.top_tab_bar.currentChanged.connect(lambda: self.onTabChanged(self.top_tab_bar.currentTab()))
+        self.top_tab_bar.tabBar.tabs["msg_center"].setClosable(False)
+        self.top_tab_bar.setAddButtonVisible(True)
+        
+        self.top_tab_bar.currentChanged.connect(lambda i: self.onTabChanged(self.top_tab_bar.currentTab()))
         self.top_tab_bar.tabCloseRequested.connect(self.onTabClose)
+        self.top_tab_bar.tabAddRequested.connect(lambda: self.top_tab_bar.setCurrentTab("msg_center"))
         
         # 1. Main Stack
         self.stacked_widget = QStackedWidget(self)
@@ -231,17 +270,16 @@ class ChatInterface(QFrame):
         self.chats = {} # routeKey -> ChatView instance
         self.top_tab_bar.setCurrentTab("msg_center")
 
-    def onTabChanged(self, routeKey):
+    def onTabChanged(self, index_or_key):
+        # The signal might pass an index, so we always get the current key from the bar
+        routeKey = self.top_tab_bar.currentTab()
         print(f"[UI] Tab changed to: {routeKey}")
+        
         if routeKey == "msg_center":
             self.stacked_widget.setCurrentWidget(self.msg_center_page)
         elif routeKey in self.chats:
-            target_widget = self.chats[routeKey]
-            self.stacked_widget.setCurrentWidget(target_widget)
+            self.stacked_widget.setCurrentWidget(self.chats[routeKey])
         
-        # Force a UI refresh to ensure the widget is shown
-        self.stacked_widget.update()
-
     def onTabClose(self, routeKey):
         if routeKey == "msg_center": return
         if routeKey in self.chats:
@@ -249,7 +287,11 @@ class ChatInterface(QFrame):
             self.stacked_widget.removeWidget(view)
             view.deleteLater()
             self.top_tab_bar.removeTab(routeKey)
-            self.top_tab_bar.setCurrentTab("msg_center")
+            
+            # If no tabs left or we just closed the active tab, go back to msg_center
+            if self.top_tab_bar.currentTab() == "":
+                self.top_tab_bar.setCurrentTab("msg_center")
+                self.stacked_widget.setCurrentWidget(self.msg_center_page)
 
     def openChat(self, target_id, name, is_group):
         routeKey = f"chat_{target_id}"
@@ -259,7 +301,9 @@ class ChatInterface(QFrame):
             self.stacked_widget.addWidget(view)
             self.top_tab_bar.addTab(routeKey, name, FIF.PEOPLE if is_group else FIF.CHAT)
             
+        # Programmatically switch tab AND switch stack
         self.top_tab_bar.setCurrentTab(routeKey)
+        self.stacked_widget.setCurrentWidget(self.chats[routeKey])
 
     def setConnected(self, connected: bool):
         if connected:
