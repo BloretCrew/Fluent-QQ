@@ -1,7 +1,8 @@
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QWidget
 from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton,
-                            FluentIcon as FIF, SegmentedWidget, SimpleCardWidget, IconWidget, SearchLineEdit)
+                            FluentIcon as FIF, SegmentedWidget, SimpleCardWidget, IconWidget, SearchLineEdit,
+                            qconfig, Theme, isDarkTheme)
 from app.common.api_client import client
 
 class ContactCard(SimpleCardWidget):
@@ -21,7 +22,6 @@ class ContactCard(SimpleCardWidget):
         # Left: Avatar
         self.avatar_container = QWidget(self)
         self.avatar_container.setFixedSize(48, 48)
-        self.avatar_container.setStyleSheet("background-color: #f0f0f0; border-radius: 24px;")
         self.avatar_layout = QVBoxLayout(self.avatar_container)
         self.avatar_layout.setContentsMargins(0, 0, 0, 0)
         
@@ -48,6 +48,23 @@ class ContactCard(SimpleCardWidget):
         self.layout.addStretch(1)
         self.layout.addWidget(self.enter_btn)
         self.setFixedHeight(72)
+        
+        self._update_style()
+        qconfig.themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, theme):
+        self._update_style(theme)
+
+    def _update_style(self, theme=None):
+        if theme is None:
+            theme = qconfig.theme
+        
+        is_dark = theme == Theme.DARK or (theme == Theme.AUTO and isDarkTheme())
+        
+        if is_dark:
+            self.avatar_container.setStyleSheet("background-color: #333333; border-radius: 24px;")
+        else:
+            self.avatar_container.setStyleSheet("background-color: #f0f0f0; border-radius: 24px;")
 
 class ContactInterface(QFrame):
     """ Contact interface with friends and groups """

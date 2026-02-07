@@ -6,6 +6,10 @@ from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, Tr
 from app.common.api_client import client
 from app.view.components.image_widget import ImageWidget
 from app.view.components.avatar_widget import AvatarWidget
+from app.view.components.chat_bubble import ChatBubble
+from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton,
+                            FluentIcon as FIF, TabBar, TabCloseButtonDisplayMode, SegmentedWidget,
+                            SimpleCardWidget, IconWidget, LineEdit, PrimaryPushButton, qconfig, Theme, isDarkTheme)
 import json
 
 class MessageCard(SimpleCardWidget):
@@ -53,7 +57,6 @@ class MessageCard(SimpleCardWidget):
             display_msg = str(message)
         
         self.msg_label = CaptionLabel(display_msg, self)
-        self.msg_label.setStyleSheet("color: rgba(0, 0, 0, 0.6);")
         self.msg_label.setWordWrap(False)
         
         self.text_container.addWidget(self.name_label)
@@ -81,6 +84,23 @@ class MessageCard(SimpleCardWidget):
         self.right_container.addWidget(self.enter_btn)
         self.layout.addLayout(self.right_container)
         self.setFixedHeight(80)
+        
+        self._update_style()
+        qconfig.themeChanged.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, theme):
+        self._update_style(theme)
+
+    def _update_style(self, theme=None):
+        if theme is None:
+            theme = qconfig.theme
+        
+        is_dark = theme == Theme.DARK or (theme == Theme.AUTO and isDarkTheme())
+        
+        if is_dark:
+            self.msg_label.setStyleSheet("color: rgba(255, 255, 255, 0.6);")
+        else:
+            self.msg_label.setStyleSheet("color: rgba(0, 0, 0, 0.6);")
 
 class ChatView(QWidget):
     """ Individual Chat View """
@@ -179,40 +199,12 @@ class ChatView(QWidget):
         
         # Name Label
         name_label = CaptionLabel(name, row_widget)
-        name_label.setStyleSheet("color: #666666;")
+        # name_label.setStyleSheet("color: #666666;") # Removed for theme adaptation
         
         # Bubble Container
-        bubble = SimpleCardWidget(row_widget)
+        bubble = ChatBubble(is_self, row_widget)
         bubble_layout = QVBoxLayout(bubble)
         bubble_layout.setContentsMargins(12, 10, 12, 10)
-        
-        # Bubble Styling
-        if is_self:
-            # Self: Blue/Primary color background, White text
-            bubble.setStyleSheet("""
-                SimpleCardWidget {
-                    background-color: #0078D4;
-                    border: none;
-                    border-radius: 8px;
-                    border-top-right-radius: 0px;
-                }
-                SubtitleLabel, CaptionLabel {
-                    color: white;
-                }
-            """)
-        else:
-            # Other: White/Gray background, Black text
-            bubble.setStyleSheet("""
-                SimpleCardWidget {
-                    background-color: #f9f9f9;
-                    border: 1px solid #e5e5e5;
-                    border-radius: 8px;
-                    border-top-left-radius: 0px;
-                }
-                SubtitleLabel, CaptionLabel {
-                    color: black;
-                }
-            """)
 
         # Message Content Processing
         has_content = False
@@ -479,9 +471,9 @@ class ChatInterface(QFrame):
         
         print(f"[UI] Resolved routeKey: {routeKey}")
         
-        if routeKey == "msg_center": 
-            print("[UI] Cannot close message center tab")
-            return
+        # if routeKey == "msg_center": 
+        #     print("[UI] Cannot close message center tab")
+        #     return
             
         if routeKey in self.chats:
             print(f"[UI] Closing chat: {routeKey}")

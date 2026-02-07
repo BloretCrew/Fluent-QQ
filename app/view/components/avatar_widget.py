@@ -2,7 +2,7 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath
 from PyQt6.QtWidgets import QLabel
-from qfluentwidgets import ImageLabel
+from qfluentwidgets import ImageLabel, isDarkTheme, qconfig, Theme
 import requests
 from threading import Thread
 
@@ -14,15 +14,29 @@ class AvatarWidget(ImageLabel):
         self.setFixedSize(size, size)
         self.image_url = image_path_or_url
         self.default_avatar = "app/resource/images/default_avatar.png"  # Fallback
+        self.size_px = size
         
         # Enable styling
-        self.setStyleSheet(f"border-radius: {size//2}px; background-color: #e0e0e0;")
+        self._update_style()
+        qconfig.themeChanged.connect(self._on_theme_changed)
+        
         self.scaledToWidth(size)
         
         if image_path_or_url.startswith("http"):
             self.loadFromUrl(image_path_or_url)
         else:
             self.setImage(image_path_or_url)
+
+    def _on_theme_changed(self, theme):
+        self._update_style(theme)
+
+    def _update_style(self, theme=None):
+        if theme is None:
+            theme = qconfig.theme
+        
+        is_dark = theme == Theme.DARK or (theme == Theme.AUTO and isDarkTheme())
+        bg = "#404040" if is_dark else "#e0e0e0"
+        self.setStyleSheet(f"border-radius: {self.size_px//2}px; background-color: {bg};")
 
     def loadFromUrl(self, url):
         """ Load image from URL asynchronously """

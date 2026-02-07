@@ -3,7 +3,7 @@ from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 
 from qfluentwidgets import (FluentWindow, NavigationItemPosition, FluentIcon as FIF,
-                            setTheme, Theme, setThemeColor, MessageBox)
+                            setTheme, Theme, setThemeColor, MessageBox, isDarkTheme)
 from qfluentwidgets import FluentIcon as FIF
 
 from .chat_interface import ChatInterface
@@ -11,11 +11,28 @@ from .contact_interface import ContactInterface
 from .setting_interface import SettingInterface
 from ..common.config import config
 from ..common.api_client import client
+from ..common.system_utils import get_system_accent_color
+from ..common.theme_manager import ThemeManager
 
 class MainWindow(FluentWindow):
     """ Main window """
     def __init__(self):
         super().__init__()
+        
+        # 1. Sync with system accent color (Like Bloret)
+        try:
+            accent_color = get_system_accent_color()
+            print(f"[MainWindow] System Accent Color: {accent_color.name()}")
+            setThemeColor(accent_color)
+        except Exception as e:
+            print(f"[MainWindow] Failed to set theme color: {e}")
+
+        # 2. Force Theme Update (Like Bloret)
+        # This ensures that even if config says Auto, we strictly enforce the correct state
+        if isDarkTheme():
+            setTheme(Theme.AUTO)
+            # Re-apply patches to ensure they stick
+            ThemeManager.apply_theme_patches(Theme.DARK)
         
         # Create sub interfaces
         self.chatInterface = ChatInterface(self)
@@ -55,9 +72,8 @@ class MainWindow(FluentWindow):
         self.setWindowIcon(QIcon("qq.png"))
         self.setWindowTitle("Fluent QQ")
         
-        # Apply theme
-        self.applyTheme(config.get("theme"))
-        config.themeChanged.connect(self.applyTheme)
+        # Theme is applied in main.py to avoid runtime issues
+        # config.themeChanged.connect(self.applyTheme)
 
     def applyTheme(self, theme):
         setTheme(theme)

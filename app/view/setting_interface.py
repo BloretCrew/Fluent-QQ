@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import QFrame, QVBoxLayout
 from qfluentwidgets import (SettingCardGroup, SwitchSettingCard, ScrollArea, 
                             ExpandLayout, Theme, OptionsSettingCard, PushSettingCard,
                             InfoBar, InfoBarIcon, FluentIcon as FIF)
-from ..common.config import config
+from ..common.config import config, ImagePreviewMode
 
 class SettingInterface(ScrollArea):
     """ Setting interface """
@@ -19,10 +19,18 @@ class SettingInterface(ScrollArea):
         # Appearance
         self.appearanceGroup = SettingCardGroup("外观", self.scrollWidget)
         self.themeCard = OptionsSettingCard(
-            config.themeMode, FIF.BRUSH, "应用主题", "调整外观",
+            config.themeMode, FIF.BRUSH, "应用主题", "调整外观（重启生效）",
             texts=["Light", "Dark", "Auto"], parent=self.appearanceGroup
         )
         self.appearanceGroup.addSettingCard(self.themeCard)
+
+        # Behavior
+        self.behaviorGroup = SettingCardGroup("行为", self.scrollWidget)
+        self.imagePreviewCard = OptionsSettingCard(
+            config.imagePreviewMode, FIF.PHOTO, "图片预览方式", "选择点击图片时的打开方式",
+            texts=["QuickLook", "系统默认打开"], parent=self.behaviorGroup
+        )
+        self.behaviorGroup.addSettingCard(self.imagePreviewCard)
 
         # Connection
         self.connectionGroup = SettingCardGroup("连接 (NapCat QQ)", self.scrollWidget)
@@ -30,10 +38,13 @@ class SettingInterface(ScrollArea):
         self.connectionGroup.addSettingCard(self.testBtn)
 
         self.expandLayout.addWidget(self.appearanceGroup)
+        self.expandLayout.addWidget(self.behaviorGroup)
         self.expandLayout.addWidget(self.connectionGroup)
         
         self.setWidget(self.scrollWidget)
         self.setWidgetResizable(True)
+        self.setStyleSheet("ScrollArea { background: transparent; border: none; }")
         
         # Connect signals
-        self.themeCard.optionChanged.connect(lambda c: config.set("theme", c.text()))
+        # self.themeCard.optionChanged.connect(lambda c: config.set("theme", c.value))
+        # self.imagePreviewCard.optionChanged.connect(lambda c: config.set("imagePreviewMode", c.value))

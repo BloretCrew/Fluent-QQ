@@ -3,6 +3,12 @@ import json
 from PyQt6.QtCore import pyqtSignal
 from qfluentwidgets import (qconfig, QConfig, ConfigItem, OptionsConfigItem, 
                             OptionsValidator, EnumSerializer, Theme)
+from enum import Enum
+
+class ImagePreviewMode(Enum):
+    """ Image Preview Mode """
+    QUICKLOOK = "QuickLook"
+    SYSTEM_DEFAULT = "System Default"
 
 class Config(QConfig):
     """ Configuration class """
@@ -17,6 +23,13 @@ class Config(QConfig):
         None, "theme", Theme.AUTO, 
         OptionsValidator([Theme.LIGHT, Theme.DARK, Theme.AUTO]), EnumSerializer(Theme)
     )
+    
+    # Behavior
+    imagePreviewMode = OptionsConfigItem(
+        None, "imagePreviewMode", ImagePreviewMode.QUICKLOOK,
+        OptionsValidator(ImagePreviewMode), EnumSerializer(ImagePreviewMode)
+    )
+    
     language = ConfigItem(None, "language", "zh_CN")
 
     def get(self, key, default=None):
@@ -24,6 +37,7 @@ class Config(QConfig):
         if key == "ws_url": return self.ws_url.value
         if key == "token": return self.token.value
         if key == "theme": return self.themeMode.value
+        if key == "imagePreviewMode": return self.imagePreviewMode.value
         if key == "language": return self.language.value
         return default
 
@@ -33,6 +47,11 @@ class Config(QConfig):
                 try: value = Theme(value)
                 except: value = Theme.AUTO
             qconfig.set(self.themeMode, value)
+        elif key == "imagePreviewMode":
+            if isinstance(value, str):
+                try: value = ImagePreviewMode(value)
+                except: value = ImagePreviewMode.QUICKLOOK
+            qconfig.set(self.imagePreviewMode, value)
         elif hasattr(self, key):
             item = getattr(self, key)
             if isinstance(item, ConfigItem):
@@ -55,6 +74,9 @@ def load_config():
                 if "token" in source: config.token.value = source["token"]
                 if "theme" in source:
                     try: config.themeMode.value = Theme(source["theme"])
+                    except: pass
+                if "imagePreviewMode" in source:
+                    try: config.imagePreviewMode.value = ImagePreviewMode(source["imagePreviewMode"])
                     except: pass
                 if "language" in source: config.language.value = source["language"]
                 

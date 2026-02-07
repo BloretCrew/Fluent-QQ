@@ -1,9 +1,16 @@
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QByteArray
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QPixmap, QDesktopServices
+from PyQt6.QtCore import QUrl
 from PyQt6.QtWidgets import QLabel, QVBoxLayout
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 from qfluentwidgets import SimpleCardWidget
 import requests
+import os
+import tempfile
+import sys
+from ...common.config import config, ImagePreviewMode
+# from .image_preview_window import ImagePreviewWindow
+import subprocess
 
 class ImageWidget(SimpleCardWidget):
     """ Widget for displaying images in chat """
@@ -54,6 +61,85 @@ class ImageWidget(SimpleCardWidget):
             self.image_label.setText("[图片加载失败]")
     
     def mousePressEvent(self, event):
-        """ Click to view full size (TODO: implement full size viewer) """
+        """ Click to view full size """
         super().mousePressEvent(event)
-        print(f"[ImageWidget] Clicked image: {self.image_url}")
+        
+        mode = config.get("imagePreviewMode")
+        print(f"[ImageWidget] Clicked. Mode: {mode}")
+        
+        if mode == ImagePreviewMode.QUICKLOOK:
+            self.showQuickLook()
+        else:
+            self.openSystemDefault()
+
+    def _get_local_filepath(self):
+        """ Get local filepath, downloading if necessary """
+        if not self.image_url.startswith("http"):
+            return self.image_url
+            
+        try:
+            # Simple temp file caching
+            # In production, use a proper cache directory and hashing
+            suffix = ".jpg"
+            if ".png" in self.image_url: suffix = ".png"
+            elif ".gif" in self.image_url: suffix = ".gif"
+            
+            # Create temp file
+            # We don't delete it immediately so external apps can open it
+            # OS will clean up temp dir eventually, or we should manage it
+            fd, filepath = tempfile.mkstemp(suffix=suffix)
+            os.close(fd)
+            
+            print(f"[ImageWidget] Downloading to temp: {filepath}")
+            response = requests.get(self.image_url, timeout=10)
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+            
+            return filepath
+        except Exception as e:
+            print(f"[ImageWidget] Failed to download image: {e}")
+            return None
+
+    def showQuickLook(self):
+        """ Show using external QuickLook application via PowerShell script """
+        filepath = self._get_local_filepath()
+        if not filepath: return
+        
+        try:
+            # Resolve script path
+            # Current file: app/view/components/image_widget.py
+            # Script: app/common/launch_quicklook.ps1
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # ../../common/launch_quicklook.ps1
+            script_path = os.path.abspath(os.path.join(current_dir, "../../common/launch_quicklook.ps1"))
+            
+            if not os.path.exists(script_path):
+                print(f"[ImageWidget] Script not found: {script_path}")
+                self.openSystemDefault()
+                return
+
+            # Run PowerShell script
+            # Use PowerShell to run the script which handles path resolution and execution
+            cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path, filepath]
+            
+            print(f"[ImageWidget] Running: {cmd}")
+            # Use subprocess.Popen to run without blocking UI
+            # creationflags=0x08000000 (CREATE_NO_WINDOW) helps hide the console window on Windows
+            creation_flags = 0x08000000 if sys.platform == 'win32' else 0
+            subprocess.Popen(cmd, creationflags=creation_flags)
+            
+        except Exception as e:
+            print(f"[ImageWidget] Failed to run QuickLook script: {e}")
+            self.openSystemDefault()
+
+    def openSystemDefault(self):
+        """ Open with system default viewer """
+        try:
+            filepath = self._get_local_filepath()
+            if not filepath: return
+            
+            print(f"[ImageWidget] Opening: {filepath}")
+            QDesktopServices.openUrl(QUrl.fromLocalFile(filepath))
+            
+        except Exception as e:
+            print(f"[ImageWidget] Failed to open system viewer: {e}")
