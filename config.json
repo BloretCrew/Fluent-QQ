@@ -1,0 +1,7 @@
+{
+    "api_url": "http://127.0.0.1:3000",
+    "ws_url": "ws://127.0.0.1:3001",
+    "token": "shenmitoken",
+    "theme": "Auto",
+    "language": "zh_CN"
+}
