@@ -139,6 +139,14 @@ class NapCatClient(QObject):
             "set": set_like
         })
 
+    def get_msg_emoji_likes(self, message_id):
+        """ Get emoji reactions for a message """
+        if not message_id:
+            return None
+        return self.call_api("get_emoji_likes", {
+            "message_id": message_id
+        })
+
     def get_history(self, target_id, is_group=False, count=20):
         """ Get message history from NapCat """
         tid = self._to_id(target_id)

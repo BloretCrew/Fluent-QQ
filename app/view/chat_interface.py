@@ -230,15 +230,34 @@ class ChatView(QWidget):
             time_str = get_relative_time(time_val)
             msg_id = str(msg.get("message_id")) if msg.get("message_id") else None
             
+            # Handle emoji likes
+            emoji_likes = msg.get("emoji_likes_list", [])
+            normalized_likes = []
+            if emoji_likes:
+                try:
+                    # Check format
+                    if isinstance(emoji_likes[0], dict):
+                        if "count" in emoji_likes[0]:
+                            normalized_likes = emoji_likes
+                        elif "emoji_id" in emoji_likes[0]:
+                            # Aggregate
+                            counts = {}
+                            for item in emoji_likes:
+                                eid = str(item.get("emoji_id"))
+                                counts[eid] = counts.get(eid, 0) + 1
+                            normalized_likes = [{"emoji_id": eid, "count": c} for eid, c in counts.items()]
+                except Exception as e:
+                    print(f"[UI] Error processing emoji likes: {e}")
+
             # PROBE: Print message structure to check for emoji likes
-            if i == 0:
-                print(f"[PROBE] Message Structure: {json.dumps(msg, indent=2, ensure_ascii=False)}")
+            # if i == 0:
+            #     print(f"[PROBE] Message Structure: {json.dumps(msg, indent=2, ensure_ascii=False)}")
             
             avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
             # Identification of self can be improved if we have current login ID
-            self.addMessage(sender_name, content, is_self=False, avatar_url=avatar_url, message_id=msg_id, time_str=time_str)
+            self.addMessage(sender_name, content, is_self=False, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes)
 
-    def addMessage(self, name, message, is_self=False, avatar_url=None, message_id=None, time_str=""):
+    def addMessage(self, name, message, is_self=False, avatar_url=None, message_id=None, time_str="", emoji_likes=None):
         """ Add a message to the chat view """
         # Main container for the message row
         row_widget = QWidget()
@@ -336,6 +355,9 @@ class ChatView(QWidget):
             msg_label.setWordWrap(True)
             bubble_layout.addWidget(msg_label)
         
+        if emoji_likes:
+            bubble.setReactions(emoji_likes)
+
         # Layout Assembly
         if is_self:
             # Structure: [Stretch] [Content(Name+Bubble)] [Avatar]
@@ -370,10 +392,10 @@ class ChatView(QWidget):
         res = client.send_message(self.target_id, msg, self.is_group)
         if res and res.get("status") == "ok":
             message_id = str(res.get("data", {}).get("message_id"))
-            self.addMessage("我", msg, is_self=True, message_id=message_id)
+            self.addMessage("我", msg, is_self=True, message_id=message_id, time_str="刚刚")
             self.input_edit.clear()
         else:
-            self.addMessage("系统", "消息发送失败，请检查连接", is_self=False)
+            self.addMessage("系统", "消息发送失败，请检查连接", is_self=False, time_str="刚刚")
 
 class ChatInterface(QFrame):
     """ Main Chat Interface with TabBar and Multi-page Stack """
@@ -621,19 +643,39 @@ class ChatInterface(QFrame):
         
         target_id = str(raw_id)
         content = data.get("message", "")
+        time_val = data.get("time")
+        time_str = get_relative_time(time_val) if time_val else "刚刚"
         
         # Use Cache
         target_name = self.contact_map.get(target_id, sender_name if not is_group else f"群聊 {target_id}")
         display_text = self.format_message(content)
         
-        self._update_or_create_card(target_id, target_name, display_text, "刚刚", is_group)
+        self._update_or_create_card(target_id, target_name, display_text, time_str, is_group)
         
         routeKey = f"chat_{target_id}"
         if routeKey in self.chats:
             sender_id = data.get("sender", {}).get("user_id")
             avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
             msg_id = str(data.get("message_id")) if data.get("message_id") else None
-            self.chats[routeKey].addMessage(sender_name, content, avatar_url=avatar_url, message_id=msg_id)
+            
+            # Handle emoji likes for incoming message
+            emoji_likes = data.get("emoji_likes_list", [])
+            normalized_likes = []
+            if emoji_likes:
+                try:
+                    if isinstance(emoji_likes[0], dict):
+                        if "count" in emoji_likes[0]:
+                            normalized_likes = emoji_likes
+                        elif "emoji_id" in emoji_likes[0]:
+                            counts = {}
+                            for item in emoji_likes:
+                                eid = str(item.get("emoji_id"))
+                                counts[eid] = counts.get(eid, 0) + 1
+                            normalized_likes = [{"emoji_id": eid, "count": c} for eid, c in counts.items()]
+                except Exception:
+                    pass
+
+            self.chats[routeKey].addMessage(sender_name, content, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes)
 
     def _update_or_create_card(self, target_id, name, text, time_str, is_group, card_type="recent"):
         card_key = f"{card_type}:{target_id}"

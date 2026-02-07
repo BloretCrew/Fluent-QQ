@@ -1,6 +1,33 @@
-from PyQt6.QtWidgets import QVBoxLayout
+from PyQt6.QtWidgets import QVBoxLayout, QWidget, QHBoxLayout, QLabel
 from PyQt6.QtCore import pyqtSignal
 from qfluentwidgets import SimpleCardWidget, isDarkTheme, qconfig, Theme, RoundMenu, Action, FluentIcon as FIF
+
+class ReactionChip(QWidget):
+    def __init__(self, icon, count, parent=None):
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setSpacing(4)
+        
+        self.icon_label = QLabel(icon, self)
+        self.count_label = QLabel(str(count), self)
+        
+        layout.addWidget(self.icon_label)
+        layout.addWidget(self.count_label)
+        
+        # Styling handled by parent or dynamic
+        # Note: Background color might need adjustment based on theme/self
+        self.setStyleSheet("""
+            ReactionChip {
+                background-color: rgba(255, 255, 255, 0.2);
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border-radius: 10px;
+            }
+            QLabel {
+                font-size: 12px;
+                background-color: transparent;
+            }
+        """)
 
 class ChatBubble(SimpleCardWidget):
     """ Chat Message Bubble with Theme Support """
@@ -14,6 +41,52 @@ class ChatBubble(SimpleCardWidget):
         self.message_id = message_id
         self._update_style()
         qconfig.themeChanged.connect(self._on_theme_changed)
+
+    def setReactions(self, reactions):
+        """
+        Display reactions below the message
+        reactions: list of dict, e.g. [{"emoji_id": "76", "count": 1}, ...]
+        """
+        layout = self.layout()
+        if not layout:
+            return 
+            
+        # Remove existing reaction container if exists
+        if hasattr(self, 'reaction_container'):
+            layout.removeWidget(self.reaction_container)
+            self.reaction_container.deleteLater()
+            del self.reaction_container
+            
+        if not reactions:
+            return
+            
+        self.reaction_container = QWidget(self)
+        self.reaction_container.setStyleSheet("background-color: transparent; border: none;")
+        
+        r_layout = QHBoxLayout(self.reaction_container)
+        r_layout.setContentsMargins(0, 4, 0, 0)
+        r_layout.setSpacing(4)
+        
+        for r in reactions:
+            emoji_id = str(r.get("emoji_id"))
+            count = r.get("count", 1)
+            icon = self._get_emoji_char(emoji_id)
+            
+            chip = ReactionChip(icon, count, self.reaction_container)
+            r_layout.addWidget(chip)
+            
+        r_layout.addStretch(1)
+        layout.addWidget(self.reaction_container)
+
+    def _get_emoji_char(self, emoji_id):
+        mapping = {
+            "76": "👍", 
+            "66": "❤️", 
+            "74": "😂", 
+            "96": "😮", 
+            "111": "😭"
+        }
+        return mapping.get(emoji_id, "❓")
 
     def contextMenuEvent(self, event):
         if not self.message_id:
