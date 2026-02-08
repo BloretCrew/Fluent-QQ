@@ -1,8 +1,9 @@
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFrame, QVBoxLayout
+from PyQt6.QtGui import QFontDatabase
 from qfluentwidgets import (SettingCardGroup, SwitchSettingCard, ScrollArea, 
                             ExpandLayout, Theme, OptionsSettingCard, PushSettingCard,
-                            InfoBar, InfoBarIcon, FluentIcon as FIF)
+                            ComboBoxSettingCard, InfoBar, InfoBarIcon, FluentIcon as FIF)
 from ..common.config import config, ImagePreviewMode
 
 class SettingInterface(ScrollArea):
@@ -26,8 +27,34 @@ class SettingInterface(ScrollArea):
             config.messageLayout, FIF.ALIGNMENT, "消息显示方式", "选择聊天气泡的排列方式",
             texts=["Right Self", "All Left"], parent=self.appearanceGroup
         )
+        
+        # Chat Font
+        self.fontCard = ComboBoxSettingCard(
+            config.chatFontFamily, FIF.FONT_SIZE, "聊天字体", "设置全局聊天区域的字体",
+            texts=[], parent=self.appearanceGroup
+        )
+        
+        # Populate fonts
+        available_fonts = QFontDatabase.families()
+        priority_fonts = ["Microsoft YaHei", "SimSun", "Segoe UI", "Arial", "Times New Roman"]
+        sorted_fonts = []
+        
+        # Add priority fonts first if they exist
+        for f in priority_fonts:
+            if f in available_fonts:
+                sorted_fonts.append(f)
+                
+        # Add remaining
+        for f in available_fonts:
+            if f not in sorted_fonts:
+                sorted_fonts.append(f)
+                
+        self.fontCard.addItems(sorted_fonts)
+        self.fontCard.setValue(config.chatFontFamily.value)
+        
         self.appearanceGroup.addSettingCard(self.themeCard)
         self.appearanceGroup.addSettingCard(self.messageLayoutCard)
+        self.appearanceGroup.addSettingCard(self.fontCard)
 
         # Behavior
         self.behaviorGroup = SettingCardGroup("行为", self.scrollWidget)

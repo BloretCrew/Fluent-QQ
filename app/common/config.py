@@ -102,6 +102,7 @@ def load_config():
                 if "imagePreviewMode" in source:
                     try: config.imagePreviewMode.value = ImagePreviewMode(source["imagePreviewMode"])
                     except: pass
+                if "chatFontFamily" in source: config.chatFontFamily.value = source["chatFontFamily"]
                 if "language" in source: config.language.value = source["language"]
                 
                 print(f"[Config] Loaded: API={config.api_url.value}, WS={config.ws_url.value}, Token={'***' if config.token.value else 'None'}")

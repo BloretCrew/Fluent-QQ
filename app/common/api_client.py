@@ -36,7 +36,21 @@ class NapCatClient(QObject):
             print(f"[Client] Calling API: {url}")
             response = requests.post(url, json=params or {}, headers=self.get_api_headers(), timeout=timeout)
             print(f"[Client] API Response status: {response.status_code}")
-            return response.json()
+            
+            data = response.json()
+            
+            # Check for specific error messages even if status is 200
+            if isinstance(data, dict):
+                if data.get("status") == "failed" or data.get("retcode") != 0:
+                     msg = data.get("message") or data.get("wording")
+                     print(f"[Client] API Logic Error: {msg}")
+                     
+                # Specific check for token failure
+                if data.get("message") == "token verify failed!":
+                    print("[Client] Critical: Token verification failed!")
+                    # Optional: Emit signal to prompt re-login
+                    
+            return data
         except Exception as e:
             print(f"[Client] API Error: {e}")
             return None

@@ -29,8 +29,12 @@ class TestFontConfig(unittest.TestCase):
 
     def test_system_fonts_availability(self):
         """ Verify we can list system fonts """
-        db = QFontDatabase()
-        families = db.families()
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if not app:
+            app = QApplication(sys.argv)
+            
+        families = QFontDatabase.families()
         self.assertTrue(len(families) > 0)
         
         # Check if commonly used fonts exist (optional, depends on OS)

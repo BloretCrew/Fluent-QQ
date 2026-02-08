@@ -236,13 +236,15 @@ class ChatView(QWidget):
         
         self.upload_btn = TransparentPushButton(FIF.ADD, "", self)
         self.upload_btn.setFixedSize(32, 32)
-        self.upload_btn.setIconSize(QSize(20, 20))
+        self.upload_btn.setIconSize(QSize(18, 18))
+        self.upload_btn.setStyleSheet("QPushButton { padding: 0px; margin: 0px; border: none; }")
         self.upload_btn.clicked.connect(self.showUploadMenu)
         
         self.at_btn = TransparentPushButton(FIF.PEOPLE, "", self)
         self.at_btn.setFixedSize(32, 32)
-        self.at_btn.setIconSize(QSize(20, 20))
+        self.at_btn.setIconSize(QSize(18, 18))
         self.at_btn.setToolTip("提及(@)")
+        self.at_btn.setStyleSheet("QPushButton { padding: 0px; margin: 0px; border: none; }")
         self.at_btn.clicked.connect(self.showAtMenu)
         
         self.input_edit = ChatLineEdit(self)
@@ -272,8 +274,50 @@ class ChatView(QWidget):
         self.reply_data = None # Current reply target
         self.pending_at_users = []
         self.pending_at_all = False
+        
+        self.member_map = {} # cache for group members (user_id -> nickname)
+        if self.is_group:
+            QTimer.singleShot(500, self._update_group_members)
 
+        config.chatFontFamily.valueChanged.connect(self.updateChatFont)
 
+    def _update_group_members(self):
+        """ Fetch group members to populate nickname cache """
+        if not self.is_group or not self.target_id: return
+        
+        def _on_members(data):
+            if not data: return
+            for m in data:
+                uid = str(m.get("user_id"))
+                nick = m.get("card") or m.get("nickname")
+                if uid and nick:
+                    self.member_map[uid] = nick
+                    
+        import threading
+        def _fetch():
+            res = client.get_group_member_list(self.target_id)
+            if res and res.get("status") == "ok":
+                # Signal back to UI thread if needed, but simple dict update is thread-safe enough for read-mostly
+                # Ideally use signal, but for now direct update
+                _on_members(res.get("data"))
+                
+        threading.Thread(target=_fetch, daemon=True).start()
+
+    def updateChatFont(self, font_family):
+        """ Update font for all messages """
+        # We need to iterate over all bubbles and update their labels
+        # This is expensive, but requested by user
+        font_family = str(font_family)
+        for widget in self.message_widgets.values():
+            bubble = widget.findChild(ChatBubble)
+            if bubble:
+                # Recursive find QLabels inside bubble
+                labels = bubble.findChildren(QLabel)
+                for label in labels:
+                    font = label.font()
+                    font.setFamily(font_family)
+                    label.setFont(font)
+                    
     def onRecallRequested(self, message_id):
         """ Handle message recall """
         print(f"[ChatView] Recalling message: {message_id}")
@@ -550,7 +594,23 @@ class ChatView(QWidget):
                         color = "#4cc2ff" if isDarkTheme() else "#0078D4"
                         style = f"color: {color}; font-weight: bold;"
                     
-                    display_name = "全体成员" if str(qq) == "all" else str(qq)
+                    if str(qq) == "all":
+                        display_name = "全体成员"
+                    else:
+                        # Try member_map first
+                        display_name = self.member_map.get(str(qq))
+                        # Then try global contact map
+                        if not display_name:
+                            try:
+                                chat_interface = self.window().findChild(QFrame, "chatInterface")
+                                if chat_interface and hasattr(chat_interface, 'contact_map'):
+                                    display_name = chat_interface.contact_map.get(str(qq))
+                            except:
+                                pass
+                        # Fallback to QQ
+                        if not display_name:
+                            display_name = str(qq)
+
                     current_text_block += f'&nbsp;<span style="{style}">@{display_name}</span>&nbsp;'
                     has_content = True
                     
@@ -566,7 +626,7 @@ class ChatView(QWidget):
                         msg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
                         font = msg_label.font()
                         font.setPixelSize(14)
-                        font.setFamily("Segoe UI")
+                        font.setFamily(config.chatFontFamily.value)
                         msg_label.setFont(font)
                         bubble_layout.addWidget(msg_label)
                         current_text_block = ""
@@ -592,19 +652,25 @@ class ChatView(QWidget):
                 msg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
                 font = msg_label.font()
                 font.setPixelSize(14)
-                font.setFamily("Segoe UI")
+                font.setFamily(config.chatFontFamily.value)
                 msg_label.setFont(font)
                 bubble_layout.addWidget(msg_label)
             
             if not has_content:
                 msg_label = SubtitleLabel("[非文本消息]", bubble)
-                setFont(msg_label, 14)
+                font = msg_label.font()
+                font.setPixelSize(14)
+                font.setFamily(config.chatFontFamily.value)
+                msg_label.setFont(font)
                 bubble_layout.addWidget(msg_label)
         else:
             # Simple text message
             display_text = str(message)
             msg_label = SubtitleLabel(display_text, bubble)
-            setFont(msg_label, 14)
+            font = msg_label.font()
+            font.setPixelSize(14)
+            font.setFamily(config.chatFontFamily.value)
+            msg_label.setFont(font)
             msg_label.setWordWrap(True)
             bubble_layout.addWidget(msg_label)
         
