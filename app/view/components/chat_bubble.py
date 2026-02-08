@@ -216,7 +216,7 @@ class ChatBubble(SimpleCardWidget):
         menu = RoundMenu(parent=self)
         
         # Reply Action
-        reply_action = Action(FIF.REPLY, "回复", self)
+        reply_action = Action(FIF.EDIT, "回复", self)
         reply_action.triggered.connect(self._on_reply)
         menu.addAction(reply_action)
         
