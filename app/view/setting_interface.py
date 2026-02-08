@@ -1,10 +1,34 @@
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QFrame, QVBoxLayout
 from PyQt6.QtGui import QFontDatabase
-from qfluentwidgets import (SettingCardGroup, SwitchSettingCard, ScrollArea, 
+from qfluentwidgets import (SettingCard, SettingCardGroup, SwitchSettingCard, ScrollArea, 
                             ExpandLayout, Theme, OptionsSettingCard, PushSettingCard,
-                            ComboBoxSettingCard, InfoBar, InfoBarIcon, FluentIcon as FIF)
+                            ComboBoxSettingCard, InfoBar, InfoBarIcon, FluentIcon as FIF,
+                            ComboBox)
 from ..common.config import config, ImagePreviewMode
+
+class FontSettingCard(SettingCard):
+    """ Custom setting card for font selection """
+    
+    def __init__(self, configItem, icon, title, content=None, parent=None):
+        super().__init__(icon, title, content, parent)
+        self.configItem = configItem
+        
+        self.comboBox = ComboBox(self)
+        self.hBoxLayout.addWidget(self.comboBox, 0, Qt.AlignmentFlag.AlignRight)
+        self.hBoxLayout.addSpacing(16)
+        
+        self.comboBox.currentTextChanged.connect(self._onValueChanged)
+        configItem.valueChanged.connect(self.setValue)
+        
+    def addItems(self, items):
+        self.comboBox.addItems(items)
+        
+    def setValue(self, value):
+        self.comboBox.setCurrentText(str(value))
+        
+    def _onValueChanged(self, text):
+        self.configItem.value = text
 
 class SettingInterface(ScrollArea):
     """ Setting interface """
@@ -29,9 +53,9 @@ class SettingInterface(ScrollArea):
         )
         
         # Chat Font
-        self.fontCard = ComboBoxSettingCard(
+        self.fontCard = FontSettingCard(
             config.chatFontFamily, FIF.FONT_SIZE, "聊天字体", "设置全局聊天区域的字体",
-            texts=[], parent=self.appearanceGroup
+            parent=self.appearanceGroup
         )
         
         # Populate fonts

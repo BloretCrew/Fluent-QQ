@@ -239,6 +239,13 @@ class NapCatClient(QObject):
         """ Get recent contact list (NapCat extension) """
         return self.call_api("get_recent_contact")
 
+    def get_group_member_list(self, group_id, no_cache=False):
+        """ Get group member list """
+        tid = self._to_id(group_id)
+        if tid is None:
+            return None
+        return self.call_api("get_group_member_list", {"group_id": tid, "no_cache": no_cache})
+
     def get_login_info(self):
         """ Get login info """
         return self.call_api("get_login_info")
