@@ -11,28 +11,28 @@ on:
       - '*'         # 忽略所有 tag 推送
 
 jobs:
-  Set-Version:
-    runs-on: windows-latest
+  # Set-Version:
+  #   runs-on: windows-latest
 
-    steps:
-    - name: 检出代码
-      uses: actions/checkout@v2
+  #   steps:
+  #   - name: 检出代码
+  #     uses: actions/checkout@v2
 
-    - name: 更新版本号
-      run: |
-        python .github/workflows/refresh-version.py
+  #   - name: 更新版本号
+  #     run: |
+  #       python .github/workflows/refresh-version.py
 
-    - name: 提交版本号更新到仓库
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add Fluent-QQ-Setup.iss
-        git add config.json
-        git commit -m "更新 MyAppVersion 版本号和一些配置文件的默认值。"
-        git push
-      shell: pwsh
+  #   - name: 提交版本号更新到仓库
+  #     run: |
+  #       git config --global user.name "github-actions[bot]"
+  #       git config --global user.email "github-actions[bot]@users.noreply.github.com"
+  #       git add Fluent-QQ-Setup.iss
+  #       git add config.json
+  #       git commit -m "更新 MyAppVersion 版本号和一些配置文件的默认值。"
+  #       git push
+  #     shell: pwsh
   Build-Windows:
-    needs: Set-Version
+    # needs: Set-Version
     runs-on: windows-latest
 
     env:
@@ -116,7 +116,7 @@ jobs:
         name: Fluent-QQ-Windows
         path: "${{ env.OUTPUT_DIR }}/"
   Code-Package:
-    needs: Set-Version
+    # needs: Set-Version
     runs-on: windows-latest
 
     steps:
@@ -209,7 +209,7 @@ jobs:
         name: Fluent-QQ-Setup
         path: "./output/Fluent-QQ-Setup.exe"
   Build-macOS:
-    needs: Set-Version
+    # needs: Set-Version
     runs-on: macos-latest
     env:
       PYTHON_VERSION: '3.9'
@@ -283,7 +283,7 @@ jobs:
         path: "${{ env.OUTPUT_DIR }}/"
 
   Build-Linux:
-    needs: Set-Version
+    # needs: Set-Version
     runs-on: ubuntu-latest
     env:
       PYTHON_VERSION: '3.9'
