@@ -1,4 +1,4 @@
 PyQt6
-QFluentWidgets
+PyQt6-Fluent-Widgets
 requests
 websocket-client
