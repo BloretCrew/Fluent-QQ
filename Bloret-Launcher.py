@@ -36,7 +36,7 @@ from qfluentwidgets import (
     BodyLabel, IndeterminateProgressBar # 添加 IndeterminateProgressBar
 )
 
-# 3. 自定义模块 (Bloret Launcher Modules)
+# 3. 自定义模块 (Fluent QQ Modules)
 import modules.globals as BLglobals
 import modules.config as cfg
 import modules.web
@@ -433,7 +433,7 @@ class MainWindow(FluentWindow):
             from qfluentwidgets import setTheme, Theme
             setTheme(Theme.AUTO)
             
-        self.setWindowTitle("Bloret Launcher")
+        self.setWindowTitle("Fluent QQ")
         
         # macOS 适配：将窗口控制按钮（红绿灯）移至左侧
         if sys.platform == 'darwin':
@@ -465,11 +465,11 @@ class MainWindow(FluentWindow):
                     log(i18nText("重复运行被禁用：检测到程序已运行，退出新实例"))
                     # 显示通知
                     notify(progress={
-                        'title': i18nText('Bloret Launcher 已阻止了重复打开软件的操作'),
-                        'body': i18nText('为了防止 Bloret Launcher 占满您的计算机，我们已阻止您重复打开 Bloret Launcher\n如需重复打开，请到设置中勾选允许重复运行。'),
+                        'title': i18nText('Fluent QQ 已阻止了重复打开软件的操作'),
+                        'body': i18nText('为了防止 Fluent QQ 占满您的计算机，我们已阻止您重复打开 Fluent QQ\n如需重复打开，请到设置中勾选允许重复运行。'),
                         'icon': os.path.join(os.getcwd(), 'bloret.ico')
                     })
-                    w = Dialog(i18nText("Bloret Launcher 已阻止了重复打开软件的操作"), i18nText("为了防止 Bloret Launcher 占满您的计算机，我们已阻止您重复打开 Bloret Launcher\n如需重复打开，请到设置中勾选允许重复运行。"))
+                    w = Dialog(i18nText("Fluent QQ 已阻止了重复打开软件的操作"), i18nText("为了防止 Fluent QQ 占满您的计算机，我们已阻止您重复打开 Fluent QQ\n如需重复打开，请到设置中勾选允许重复运行。"))
                     if w.exec():
                         print(i18nText('确认'))
                     ctypes.windll.kernel32.CloseHandle(self.mutex)
@@ -483,7 +483,7 @@ class MainWindow(FluentWindow):
             except IOError:
                 log(i18nText("检测到程序重复运行"))
                 if not self.config.get('repeat_run', False):
-                    print("Bloret Launcher is already running.")
+                    print("Fluent QQ is already running.")
                     sys.exit(0)
                     
         check_for_updates(self,BLglobals.server_ip)
@@ -492,7 +492,7 @@ class MainWindow(FluentWindow):
             log(i18nText("显示软件打开过程已启用"))
             # 显示通知
             notify(progress={
-                'title': i18nText('正在启动 Bloret Launcher'),
+                'title': i18nText('正在启动 Fluent QQ'),
                 'status': i18nText('正在做打开软件前的工作...'),
                 'value': '0',
                 'valueStringOverride': '0%',
@@ -540,7 +540,7 @@ class MainWindow(FluentWindow):
         self.splashScreen = SplashScreen(QIcon(icon_path), self)
         log(i18nText("启动画面创建完成"))
         self.splashScreen.setIconSize(QSize(102, 102))
-        self.splashScreen.setWindowTitle("Bloret Launcher")
+        self.splashScreen.setWindowTitle("Fluent QQ")
         self.splashScreen.setWindowIcon(QIcon(icon_path))
         
         # 2. 在创建其他子页面前先显示主界面
@@ -740,7 +740,7 @@ class MainWindow(FluentWindow):
     def initWindow(self):
         # self.resize(900, 700)
         self.setWindowIcon(QIcon("bloret.ico"))
-        self.setWindowTitle("Bloret Launcher")
+        self.setWindowTitle("Fluent QQ")
         self.scale_factor = self.config.get('size', 90) / 100.0
         # self.resize(int(800 * self.scale_factor), int(600 * self.scale_factor))
         # 优化窗口缩放逻辑（替换原有resize调用）
@@ -1207,7 +1207,7 @@ class MainWindow(FluentWindow):
         show_way = widget.findChild(ComboBox, "show_way")
         fabric_choose = widget.findChild(ComboBox, "Fabric_choose")
         LM_download_way_choose = widget.findChild(ComboBox, "LM_download_way_choose")
-        if selected_way == "Bloret Launcher":
+        if selected_way == "Fluent QQ":
             if show_way:
                 show_way.setEnabled(False)
             if fabric_choose:
@@ -1494,7 +1494,7 @@ class MainWindow(FluentWindow):
             # 定义 teaching_tip 变量
             teaching_tip = None
     
-            if selected_way == "Bloret Launcher":  # Bloret Launcher 方法
+            if selected_way == "Fluent QQ":  # Fluent QQ 方法
                 log(f"LM_Download_Way_minecraft:{LM_Download_Way_minecraft}")
                 LM_download_way_choose = widget.findChild(ComboBox, "LM_download_way_choose")
                 BL_download(self, choose_ver, LM_download_way_choose.currentText(), LM_Download_Way_minecraft, LM_Download_Way_version, self)
@@ -1709,7 +1709,7 @@ class MainWindow(FluentWindow):
             
             else:
                 log(i18nText("本地模式已启用，无法使用微软登录。"))
-                w = Dialog(i18nText("您已启用本地模式"), i18nText("Bloret Launcher 在本地模式下无法进行微软登录，\n因为该操作需要互联网\n如果需要登录，请到设置界面关闭本地模式。或使用离线登录。"))
+                w = Dialog(i18nText("您已启用本地模式"), i18nText("Fluent QQ 在本地模式下无法进行微软登录，\n因为该操作需要互联网\n如果需要登录，请到设置界面关闭本地模式。或使用离线登录。"))
                 if w.exec():
                     print(i18nText('确认'))
                 else:
@@ -2218,7 +2218,7 @@ QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
 
 
 # 创建 QApplication 实例
-app = QApplication(["Bloret Launcher"])
+app = QApplication(["Fluent QQ"])
 
 # # 初始化 FluentTranslator
 # translator = FluentTranslator()
@@ -2238,7 +2238,7 @@ app = QApplication(["Bloret Launcher"])
 
 # 检查写入权限
 if not check_write_permission():
-    w = Dialog(i18nText("Bloret Launcher 无法写入文件"), i18nText("Bloret Launcher 需要在安装文件夹写入文件，但是我们在多次尝试后仍无法正常写入文件\n这可能是由于安装文件夹是只读的。\n请考虑将百络谷启动器安装在非 Program Files , Program Files (x86) 等只读的文件夹\n由于没有写入权限，百络谷启动器将退出。"))
+    w = Dialog(i18nText("Fluent QQ 无法写入文件"), i18nText("Fluent QQ 需要在安装文件夹写入文件，但是我们在多次尝试后仍无法正常写入文件\n这可能是由于安装文件夹是只读的。\n请考虑将百络谷启动器安装在非 Program Files , Program Files (x86) 等只读的文件夹\n由于没有写入权限，百络谷启动器将退出。"))
     if w.exec():
         print(i18nText('确认'))
     else:

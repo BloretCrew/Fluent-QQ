@@ -1,0 +1,338 @@
+name: 应用程序打包 - Nuitka
+
+permissions:
+  contents: write
+
+on:
+  release:
+    types: [prereleased]
+  workflow_dispatch:
+
+jobs:
+  Build-Windows:
+    runs-on: windows-latest
+
+    env:
+      PYTHON_VERSION: '3.10'
+      OUTPUT_DIR: 'output'
+      ARTIFACT_NAME: 'Fluent-QQ-Windows.zip'
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+      with:
+        ref: 'Windows'
+
+    - name: 验证资源文件路径
+      run: |
+        Get-ChildItem -Path .
+        if (-not (Test-Path "bloret.ico")) { Write-Host "bloret.ico not found"; exit 1 }
+        if (-not (Test-Path "config.json")) { Write-Host "config.json not found"; exit 1 }
+        if (-not (Test-Path "ui")) { Write-Host "ui directory not found"; exit 1 }
+        if (-not (Test-Path "lang")) { Write-Host "lang directory not found"; exit 1 }
+        if (-not (Test-Path "easytier")) { Write-Host "easytier directory not found"; exit 1 }
+        if (-not (Test-Path "JavaWrapper.jar")) { Write-Host "JavaWrapper.jar not found"; exit 1 }
+      shell: pwsh
+
+    - name: 设置 Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 安装程序依赖和打包依赖
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+        pip install pillow
+        pip install nuitka
+    
+    - name: 使用 Nuitka 打包
+      run: |
+        python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=tk-inter --enable-plugin=pyqt5 --include-qt-plugins=sensible,styles --windows-icon-from-ico=bloret.ico --output-file=Fluent-QQ.exe --assume-yes-for-downloads --windows-company-name="Bloret" --windows-product-name="Fluent QQ" --windows-file-version=1.0.0 --windows-product-version=1.0.0 `
+          --include-data-dir=ui=ui --include-data-dir=lang=lang --include-data-dir=easytier=easytier --include-data-dir=modules=modules Fluent-QQ.py
+      shell: pwsh
+
+    - name: 创建包含其他文件夹的目录
+      run: |
+        mkdir -p ${{ env.OUTPUT_DIR }}
+        cp Fluent-QQ.exe ${{ env.OUTPUT_DIR }}/
+        cp -r ui/ ${{ env.OUTPUT_DIR }}/
+        cp -r lang/ ${{ env.OUTPUT_DIR }}/
+        cp -r easytier/ ${{ env.OUTPUT_DIR }}/
+        cp -r config.json ${{ env.OUTPUT_DIR }}/
+        cp -r LICENSE ${{ env.OUTPUT_DIR }}/
+        cp -r servers.dat ${{ env.OUTPUT_DIR }}/
+        cp -r bloret.ico ${{ env.OUTPUT_DIR }}/
+        cp -r JavaWrapper.jar ${{ env.OUTPUT_DIR }}/
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ
+        path: "${{ env.OUTPUT_DIR }}/"
+        
+  Build-Linux:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: '3.10'
+      OUTPUT_DIR: 'output'
+      ARTIFACT_NAME: 'Fluent-QQ-Linux.zip'
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+
+    - name: 验证资源文件路径
+      run: |
+        ls -alh .
+        [ -f "bloret.ico" ] || (echo "bloret.ico not found" && exit 1)
+        [ -f "config.json" ] || (echo "config.json not found" && exit 1)
+        [ -d "ui" ] || (echo "ui directory not found" && exit 1)
+        [ -d "easytier" ] || (echo "easytier directory not found" && exit 1)
+        [ -d "lang" ] || (echo "lang directory not found" && exit 1)
+        [ -f "JavaWrapper.jar" ] || (echo "JavaWrapper.jar not found" && exit 1)
+      shell: bash
+
+    - name: 设置 Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fuse libfuse2 patchelf
+
+    - name: 安装程序依赖和打包依赖
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pillow nuitka zstandard
+
+    - name: 使用 Nuitka 打包
+      run: |
+        python -m nuitka --standalone --onefile --enable-plugin=pyqt5 --include-qt-plugins=sensible --include-data-dir=ui=ui --include-data-dir=lang=lang --include-data-dir=easytier=easytier --include-data-dir=modules=modules --output-file=Fluent-QQ Fluent-QQ.py
+
+    - name: 创建包含其他文件夹的目录
+      run: |
+        mkdir -p ${{ env.OUTPUT_DIR }}
+        cp Fluent-QQ ${{ env.OUTPUT_DIR }}/
+        cp -r ui/ ${{ env.OUTPUT_DIR }}/
+        cp -r lang/ ${{ env.OUTPUT_DIR }}/
+        cp -r easytier/ ${{ env.OUTPUT_DIR }}/
+        cp -r config.json ${{ env.OUTPUT_DIR }}/
+        cp -r LICENSE ${{ env.OUTPUT_DIR }}/
+        cp -r servers.dat ${{ env.OUTPUT_DIR }}/
+        cp -r JavaWrapper.jar ${{ env.OUTPUT_DIR }}/
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ-Linux
+        path: "${{ env.OUTPUT_DIR }}/"
+
+  Build-MacOS:
+    runs-on: macos-latest
+    env:
+      PYTHON_VERSION: '3.10'
+      OUTPUT_DIR: 'output'
+      ARTIFACT_NAME: 'Fluent-QQ-MacOS.zip'
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+
+    - name: 验证资源文件路径
+      run: |
+        ls -alh .
+        [ -f "bloret.ico" ] || (echo "bloret.ico not found" && exit 1)
+        [ -f "config.json" ] || (echo "config.json not found" && exit 1)
+        [ -d "ui" ] || (echo "ui directory not found" && exit 1)
+        [ -d "easytier" ] || (echo "easytier directory not found" && exit 1)
+        [ -d "lang" ] || (echo "lang directory not found" && exit 1)
+        [ -f "JavaWrapper.jar" ] || (echo "JavaWrapper.jar not found" && exit 1)
+      shell: bash
+
+    - name: 设置 Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 安装程序依赖和打包依赖
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+        pip install pillow nuitka zstandard ordered-set
+
+    - name: 使用 Nuitka 打包
+      run: |
+        python -m nuitka --standalone --macos-create-app-bundle --enable-plugin=pyqt5 --include-qt-plugins=sensible,styles --include-data-dir=ui=ui --include-data-dir=lang=lang --include-data-dir=easytier=easytier --include-data-dir=modules=modules --output-file=Fluent-QQ.app Fluent-QQ.py
+
+    - name: 创建包含其他文件夹的目录
+      run: |
+        mkdir -p ${{ env.OUTPUT_DIR }}
+        cp -r Fluent-QQ.app ${{ env.OUTPUT_DIR }}/
+        cp -r ui/ ${{ env.OUTPUT_DIR }}/
+        cp -r lang/ ${{ env.OUTPUT_DIR }}/
+        cp -r easytier/ ${{ env.OUTPUT_DIR }}/
+        cp -r config.json ${{ env.OUTPUT_DIR }}/
+        cp -r LICENSE ${{ env.OUTPUT_DIR }}/
+        cp -r servers.dat ${{ env.OUTPUT_DIR }}/
+        cp -r JavaWrapper.jar ${{ env.OUTPUT_DIR }}/
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ-MacOS
+        path: "${{ env.OUTPUT_DIR }}/"
+
+  Upload-To-Release:
+    # 仅在 release 事件时运行，不在 workflow_dispatch 时运行
+    if: github.event_name == 'release'
+    needs: [Build-Windows, Build-Linux, Build-MacOS, Build-Setup]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载 Windows 构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Fluent-QQ
+          path: Fluent-QQ-Windows
+
+      - name: 下载 Linux 构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Fluent-QQ-Linux
+          path: Fluent-QQ-Linux
+
+      - name: 下载 MacOS 构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Fluent-QQ-MacOS
+          path: Fluent-QQ-MacOS
+
+      - name: 下载安装程序
+        uses: actions/download-artifact@v4
+        with:
+          name: Fluent-QQ-Setup
+
+      - name: 创建发布压缩包
+        run: |
+          zip -r Fluent-QQ-Windows.zip Fluent-QQ-Windows/*
+          zip -r Fluent-QQ-Linux.zip Fluent-QQ-Linux/*
+          zip -r Fluent-QQ-MacOS.zip Fluent-QQ-MacOS/*
+
+      - name: 上传到 Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            Fluent-QQ-Windows.zip
+            Fluent-QQ-Linux.zip
+            Fluent-QQ-MacOS.zip
+            Fluent-QQ-Setup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  Code-Package:
+    runs-on: windows-latest
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+      with:
+        ref: 'Windows'
+
+    - name: 创建输出目录并清理
+      run: |
+        # 强制创建目录并清理旧内容
+        New-Item -ItemType Directory -Force -Path "output"
+        Remove-Item -Path "output/*" -Recurse -ErrorAction Ignore
+      shell: pwsh
+
+    - name: 复制所有文件（排除 .git 和 output）
+      run: |
+        # 递归复制所有文件到 output 目录，排除 .git 和 output 目录
+        Copy-Item -Path "*" -Destination "output" -Recurse -Exclude @(".git", "output")
+        # 确保 LICENSE 文件被复制
+        if (Test-Path "LICENSE") {
+          Copy-Item -Path "LICENSE" -Destination "output\"
+        } else {
+          Write-Host "LICENSE 文件未找到"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: 创建压缩包
+      run: |
+        # 直接压缩 output 目录内容为 Code-Package.zip
+        Compress-Archive -Path "output/*" -DestinationPath "output/Code-Package.zip" -Force
+      shell: pwsh
+
+    - name: 上传压缩包
+      uses: actions/upload-artifact@v4
+      with:
+        name: Code-Package
+        path: "output/Code-Package.zip"
+  Build-Setup:
+    needs: Build-Windows
+    runs-on: windows-latest
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+      with:
+        ref: 'Windows'
+
+    - name: 下载构建产物
+      uses: actions/download-artifact@v4
+      with:
+        name: Fluent-QQ
+        path: output
+
+    - name: 确保 LICENSE 文件存在
+      run: |
+        if (-not (Test-Path "output/LICENSE")) {
+          Write-Host "LICENSE 文件未找到"
+          exit 1
+        }
+      shell: pwsh
+
+    - name: 展示完整文件夹目录
+      run: |
+        Write-Host "当前文件夹目录结构如下："
+        Get-ChildItem -Path "output" -Recurse | Format-Table -AutoSize
+      shell: pwsh
+
+    - name: 设置系统语言为简体中文
+      run: |
+        Set-WinSystemLocale -SystemLocale zh-CN
+        Write-Host "系统语言已设置为简体中文"
+      shell: pwsh
+
+    - name: 安装 Inno Setup
+      run: |
+        choco install innosetup --yes
+      shell: pwsh
+
+    - name: 运行 Inno Setup 构建安装程序
+      run: |
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" ".\Fluent-QQ-Setup.iss"
+      shell: pwsh
+
+    - name: 上传安装程序
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ-Setup
+        path: "./output/Fluent-QQ-Setup.exe"
+
+    # - name: 更新为测试版
+    #   run: |
+    #     # 从GitHub事件中提取版本信息
+    #     VERSION="${{ github.event.release.tag_name }}"
+    #     VERSION_NAME="${{ github.event.release.name }}"
+    #     DESCRIPTION=${{ toJSON(github.event.release.body) }}
+        
+    #     # 调用API更新为测试版
+    #     curl -X POST https://launcher.bloret.net/api/newversion/github \
+    #       -H "Content-Type: application/json" \
+    #       -d "{\"key\":\"${{ secrets.BLORET_LAUNCHER_WEBSITE }}\",\"beta\":true,\"version\":\"$VERSION\",\"versionName\":\"$VERSION_NAME\",\"description\":$DESCRIPTION}"
+    #   shell: bash

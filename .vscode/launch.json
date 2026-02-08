@@ -16,7 +16,7 @@
             "name": "Python 调试程序: Fluent QQ",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/main.py",
+            "program": "${workspaceFolder}/Fluent-QQ.py",
             "console": "integratedTerminal"
         },
         {
@@ -26,7 +26,7 @@
             "module": "PyInstaller",
             "args": [
                 "--onefile",
-                "${workspaceFolder}/main.py"
+                "${workspaceFolder}/Fluent-QQ.py"
             ],
             "console": "integratedTerminal",
             "postDebugTask": "Run Packaged App"

@@ -172,22 +172,36 @@ class NapCatClient(QObject):
         file_name = os.path.basename(file_path)
         abs_path = os.path.abspath(file_path)
         
+        # Try to use base64 for remote bots
+        file_param = abs_path
+        try:
+            import base64
+            # Limit to reasonable size (e.g. 100MB) to avoid memory issues
+            if os.path.getsize(abs_path) < 100 * 1024 * 1024:
+                with open(abs_path, "rb") as f:
+                    b64_data = base64.b64encode(f.read()).decode('utf-8')
+                    file_param = f"base64://{b64_data}"
+        except Exception as e:
+            print(f"[Client] Failed to encode file to base64: {e}")
+            # Fallback to path
+            pass
+
         if is_group:
             action = "upload_group_file"
             params = {
                 "group_id": tid,
-                "file": abs_path,
+                "file": file_param,
                 "name": file_name
             }
         else:
             action = "upload_private_file"
             params = {
                 "user_id": tid,
-                "file": abs_path,
+                "file": file_param,
                 "name": file_name
             }
             
-        return self.call_api(action, params)
+        return self.call_api(action, params, timeout=120)
 
     def delete_msg(self, message_id):
         """ Recall/Withdraw message """
