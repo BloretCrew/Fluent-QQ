@@ -40,6 +40,9 @@ class MainWindow(FluentWindow):
         # Listen for global messages
         client.messageReceived.connect(self.onMessageReceived)
         
+        # Start WebSocket connection
+        client.start_ws()
+        
     def initNavigation(self):
         self.addSubInterface(self.chat_interface, FIF.CHAT, '聊天')
         self.addSubInterface(self.contact_interface, FIF.PEOPLE, '联系人')

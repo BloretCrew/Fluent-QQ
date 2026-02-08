@@ -1146,6 +1146,9 @@ class ChatInterface(QFrame):
         
         # Load Data
         QTimer.singleShot(500, self.loadInitialData)
+        
+        # Listen for messages
+        client.messageReceived.connect(self.addMessage)
 
     def loadInitialData(self):
         """ Startup data loading """
