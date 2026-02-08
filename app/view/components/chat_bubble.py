@@ -98,115 +98,44 @@ class ReactionChip(QWidget):
 class ChatBubble(SimpleCardWidget):
     """ Chat Message Bubble with Theme Support """
     
-    recallRequested = pyqtSignal(str)
-    reactRequested = pyqtSignal(str, str)
-    replyRequested = pyqtSignal(str) # message_id
-    replyClicked = pyqtSignal(str) # reply_id
+    reactRequested = pyqtSignal(str, str) # msg_id, emoji_id
+    replyRequested = pyqtSignal(str) # msg_id
+    recallRequested = pyqtSignal(str) # msg_id
     
-    def __init__(self, is_self, message_id=None, parent=None):
+    def __init__(self, message_id=None, is_self=False, parent=None):
         super().__init__(parent)
-        self.is_self = is_self
         self.message_id = message_id
+        self.is_self = is_self
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(12, 8, 12, 8)
+        self._layout.setSpacing(4)
         
-        # Ensure layout exists
-        if self.layout() is None:
-            # print("DEBUG: Creating new QVBoxLayout in __init__")
-            self.main_layout = QVBoxLayout(self)
-            self.setLayout(self.main_layout)
-            self.main_layout.setContentsMargins(12, 8, 12, 8)
-        else:
-            # print(f"DEBUG: Layout already exists: {self.layout()}")
-            self.main_layout = self.layout()
-            
+        # Initial style update
         self._update_style()
+        
+        # Listen for theme changes
         qconfig.themeChanged.connect(self._on_theme_changed)
 
-    def setReply(self, reply_text, reply_id=None):
-        """ Set reply quote """
-        layout = self.layout()
-        if layout is None and hasattr(self, 'main_layout'):
-            layout = self.main_layout
-            
-        if layout is None:
-            # Fallback: try to find layout or create one
-            layout = self.findChild(QVBoxLayout)
-            if layout is None:
-                layout = QVBoxLayout(self)
-                self.setLayout(layout)
-                self.main_layout = layout
+    def addWidget(self, widget):
+        self._layout.addWidget(widget)
         
-        # Check if already exists
-        if hasattr(self, 'reply_widget'):
-            layout.removeWidget(self.reply_widget)
-            self.reply_widget.deleteLater()
+    def addLayout(self, layout):
+        self._layout.addLayout(layout)
         
-        self.reply_widget = ReplyQuote(reply_text, self)
-        if reply_id:
-            self.reply_widget.clicked.connect(lambda: self.replyClicked.emit(str(reply_id)))
-            
-        # Insert at top (index 0)
-        layout.insertWidget(0, self.reply_widget)
-
     def setReactions(self, reactions):
+        """ 
+        reactions: dict or list of (emoji_id, count, has_reacted) 
+        For now assuming list of strings or simple dict
         """
-        Display reactions below the message
-        reactions: list of dict, e.g. [{"emoji_id": "76", "count": 1}, ...]
-        """
-        layout = getattr(self, 'main_layout', self.layout())
-        
-        if layout is None:
-            layout = self.layout()
-            
-        if layout is None:
-            print(f"DEBUG: No layout found in ChatBubble instance {id(self)}")
-            # Attempt to recover
-            self.main_layout = QVBoxLayout(self)
-            self.setLayout(self.main_layout)
-            layout = self.main_layout
-            
-        # Remove existing reaction container if exists
-        if hasattr(self, 'reaction_container'):
-            layout.removeWidget(self.reaction_container)
-            self.reaction_container.deleteLater()
-            del self.reaction_container
-            
-        if not reactions:
-            return
-            
-        self.reaction_container = QWidget(self)
-        self.reaction_container.setObjectName("reaction_container")
-        self.reaction_container.setStyleSheet("background-color: transparent; border: none;")
-        
-        r_layout = QHBoxLayout(self.reaction_container)
-        r_layout.setContentsMargins(0, 4, 0, 0)
-        r_layout.setSpacing(4)
-        
-        for r in reactions:
-            emoji_id = str(r.get("emoji_id"))
-            count = r.get("count", 1)
-            icon = self._get_emoji_char(emoji_id)
-            
-            chip = ReactionChip(icon, count, self.is_self, self.reaction_container)
-            r_layout.addWidget(chip)
-            
-        r_layout.addStretch(1)
-        layout.addWidget(self.reaction_container)
-        print("DEBUG: reaction_container added to layout")
+        # Remove existing reaction widgets if any (usually at bottom)
+        # TODO: Implement reaction display
+        pass
 
-    def _get_emoji_char(self, emoji_id):
-        mapping = {
-            "76": "👍", "66": "❤️", "74": "😂", "96": "😮", "111": "😭",
-            "37": "😎", "27": "😅", "118": "😵", "112": "😡", "14": "微笑",
-            "124": "🙏", "179": "💩", "109": "😓", "13": "呲牙",
-            # Add more common ones or fallback
-        }
-        # If not in mapping, try to be helpful
-        # Some IDs might be system IDs that don't map well to unicode.
-        # Fallback: if we don't know it, we can return the ID if it's weird, or a generic symbol.
-        # But showing "❓" is better than nothing.
-        # Let's check if it's a known "OK" gesture or similar.
-        
-        return mapping.get(emoji_id, f"[{emoji_id}]" if len(emoji_id) > 3 else "❓")
+    def setReply(self, reply_text, reply_id):
+        # Add reply quote at top
+        quote = ReplyQuote(reply_text, self)
+        quote.clicked.connect(lambda: print(f"Jump to reply {reply_id}")) # TODO: Implement jump
+        self._layout.insertWidget(0, quote)
 
     def contextMenuEvent(self, event):
         if not self.message_id:
@@ -306,3 +235,15 @@ class ChatBubble(SimpleCardWidget):
                     color: {text};
                 }}
             """)
+
+class ChatTextLabel(QLabel):
+    """QLabel that delegates context menu to parent ChatBubble"""
+    def contextMenuEvent(self, event):
+        # Delegate to parent if it's a ChatBubble
+        parent = self.parent()
+        while parent:
+            if isinstance(parent, ChatBubble):
+                parent.contextMenuEvent(event)
+                return
+            parent = parent.parent()
+        super().contextMenuEvent(event)

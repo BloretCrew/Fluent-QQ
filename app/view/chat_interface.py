@@ -8,7 +8,7 @@ from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, Tr
 from app.common.api_client import client
 from app.view.components.image_widget import ImageWidget
 from app.view.components.avatar_widget import AvatarWidget
-from app.view.components.chat_bubble import ChatBubble
+from app.view.components.chat_bubble import ChatBubble, ChatTextLabel
 from app.common.time_utils import get_relative_time
 from app.common.config import config, MessageLayout
 from app.common.history_manager import history_manager
@@ -620,7 +620,7 @@ class ChatView(QWidget):
                     
                 elif seg_type == "image":
                     if current_text_block:
-                        msg_label = QLabel(current_text_block, bubble)
+                        msg_label = ChatTextLabel(current_text_block, bubble)
                         msg_label.setTextFormat(Qt.TextFormat.RichText)
                         msg_label.setWordWrap(True)
                         msg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
@@ -646,7 +646,7 @@ class ChatView(QWidget):
                             has_content = True
             
             if current_text_block:
-                msg_label = QLabel(current_text_block, bubble)
+                msg_label = ChatTextLabel(current_text_block, bubble)
                 msg_label.setTextFormat(Qt.TextFormat.RichText)
                 msg_label.setWordWrap(True)
                 msg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
