@@ -1,0 +1,17 @@
+{
+    "null": {
+        "api_url": "http://127.0.0.1:3000",
+        "language": "zh_CN",
+        "theme": "Light",
+        "token": "shenmitoken",
+        "ws_url": "ws://127.0.0.1:3001"
+    },
+    "QFluentWidgets": {
+        "FontFamilies": [
+            "Segoe UI",
+            "Microsoft YaHei",
+            "PingFang SC"
+        ],
+        "ThemeColor": "#ff009faa"
+    }
+}

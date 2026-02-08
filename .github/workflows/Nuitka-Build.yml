@@ -1,0 +1,227 @@
+name: 应用程序打包 - Nuitka
+
+permissions:
+  contents: write
+
+on:
+  release:
+    types: [prereleased]
+  workflow_dispatch:
+
+jobs:
+  Build-Windows:
+    runs-on: windows-latest
+
+    env:
+      PYTHON_VERSION: '3.10'
+      OUTPUT_DIR: 'output'
+      ARTIFACT_NAME: 'Fluent-QQ-Windows.zip'
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+
+    - name: 验证资源文件路径
+      run: |
+        Get-ChildItem -Path .
+        if (-not (Test-Path "config.json")) { Write-Host "config.json not found"; exit 1 }
+        if (-not (Test-Path "app")) { Write-Host "app directory not found"; exit 1 }
+        if (-not (Test-Path "qq.png")) { Write-Host "qq.png not found"; exit 1 }
+      shell: pwsh
+
+    - name: 设置 Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 安装程序依赖和打包依赖
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+        pip install nuitka
+    
+    - name: 使用 Nuitka 打包
+      run: |
+        python -m nuitka --standalone --onefile --windows-console-mode=disable --enable-plugin=pyqt6 --include-qt-plugins=sensible,styles --output-file=Fluent-QQ.exe --assume-yes-for-downloads --windows-product-name="Fluent QQ" --windows-file-version=1.0.0 --windows-product-version=1.0.0 `
+          --include-data-dir=app=app --include-data-files=config.json=config.json --include-data-files=qq.png=qq.png Fluent-QQ.py
+      shell: pwsh
+
+    - name: 创建包含其他文件夹的目录
+      run: |
+        mkdir -p ${{ env.OUTPUT_DIR }}
+        cp Fluent-QQ.exe ${{ env.OUTPUT_DIR }}/
+        cp -r config.json ${{ env.OUTPUT_DIR }}/
+        cp -r qq.png ${{ env.OUTPUT_DIR }}/
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ
+        path: "${{ env.OUTPUT_DIR }}/"
+        
+  Build-Linux:
+    runs-on: ubuntu-latest
+    env:
+      PYTHON_VERSION: '3.10'
+      OUTPUT_DIR: 'output'
+      ARTIFACT_NAME: 'Fluent-QQ-Linux.zip'
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+
+    - name: 验证资源文件路径
+      run: |
+        ls -alh .
+        [ -f "config.json" ] || (echo "config.json not found" && exit 1)
+        [ -d "app" ] || (echo "app directory not found" && exit 1)
+        [ -f "qq.png" ] || (echo "qq.png not found" && exit 1)
+      shell: bash
+
+    - name: 设置 Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fuse libfuse2 patchelf
+
+    - name: 安装程序依赖和打包依赖
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install nuitka zstandard
+
+    - name: 使用 Nuitka 打包
+      run: |
+        python -m nuitka --standalone --onefile --enable-plugin=pyqt6 --include-qt-plugins=sensible --include-data-dir=app=app --include-data-files=config.json=config.json --include-data-files=qq.png=qq.png --output-file=Fluent-QQ Fluent-QQ.py
+
+    - name: 创建包含其他文件夹的目录
+      run: |
+        mkdir -p ${{ env.OUTPUT_DIR }}
+        cp Fluent-QQ ${{ env.OUTPUT_DIR }}/
+        cp -r config.json ${{ env.OUTPUT_DIR }}/
+        cp -r qq.png ${{ env.OUTPUT_DIR }}/
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ-Linux
+        path: "${{ env.OUTPUT_DIR }}/"
+
+  Build-MacOS:
+    runs-on: macos-latest
+    env:
+      PYTHON_VERSION: '3.10'
+      OUTPUT_DIR: 'output'
+      ARTIFACT_NAME: 'Fluent-QQ-MacOS.zip'
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+
+    - name: 验证资源文件路径
+      run: |
+        ls -alh .
+        [ -f "config.json" ] || (echo "config.json not found" && exit 1)
+        [ -d "app" ] || (echo "app directory not found" && exit 1)
+        [ -f "qq.png" ] || (echo "qq.png not found" && exit 1)
+      shell: bash
+
+    - name: 设置 Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 安装程序依赖和打包依赖
+      run: |
+        pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+        pip install nuitka zstandard ordered-set
+
+    - name: 使用 Nuitka 打包
+      run: |
+        python -m nuitka --standalone --macos-create-app-bundle --enable-plugin=pyqt6 --include-qt-plugins=sensible,styles --include-data-dir=app=app --include-data-files=config.json=config.json --include-data-files=qq.png=qq.png --output-file=Fluent-QQ.app Fluent-QQ.py
+
+    - name: 创建包含其他文件夹的目录
+      run: |
+        mkdir -p ${{ env.OUTPUT_DIR }}
+        cp -r Fluent-QQ.app ${{ env.OUTPUT_DIR }}/
+        cp -r config.json ${{ env.OUTPUT_DIR }}/
+        cp -r qq.png ${{ env.OUTPUT_DIR }}/
+
+    - name: 上传构建产物
+      uses: actions/upload-artifact@v4
+      with:
+        name: Fluent-QQ-MacOS
+        path: "${{ env.OUTPUT_DIR }}/"
+
+  Upload-To-Release:
+    if: github.event_name == 'release'
+    needs: [Build-Windows, Build-Linux, Build-MacOS]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载 Windows 构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Fluent-QQ
+          path: Fluent-QQ-Windows
+
+      - name: 下载 Linux 构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Fluent-QQ-Linux
+          path: Fluent-QQ-Linux
+
+      - name: 下载 MacOS 构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: Fluent-QQ-MacOS
+          path: Fluent-QQ-MacOS
+
+      - name: 创建发布压缩包
+        run: |
+          zip -r Fluent-QQ-Windows.zip Fluent-QQ-Windows/*
+          zip -r Fluent-QQ-Linux.zip Fluent-QQ-Linux/*
+          zip -r Fluent-QQ-MacOS.zip Fluent-QQ-MacOS/*
+
+      - name: 上传到 Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            Fluent-QQ-Windows.zip
+            Fluent-QQ-Linux.zip
+            Fluent-QQ-MacOS.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  Code-Package:
+    runs-on: windows-latest
+
+    steps:
+    - name: 检出最新版本
+      uses: actions/checkout@v2
+
+    - name: 创建输出目录并清理
+      run: |
+        New-Item -ItemType Directory -Force -Path "output"
+        Remove-Item -Path "output/*" -Recurse -ErrorAction Ignore
+      shell: pwsh
+
+    - name: 复制所有文件（排除 .git 和 output）
+      run: |
+        Copy-Item -Path "*" -Destination "output" -Recurse -Exclude @(".git", "output", "__pycache__", ".vscode")
+      shell: pwsh
+
+    - name: 创建压缩包
+      run: |
+        Compress-Archive -Path "output/*" -DestinationPath "output/Code-Package.zip" -Force
+      shell: pwsh
+
+    - name: 上传压缩包
+      uses: actions/upload-artifact@v4
+      with:
+        name: Code-Package
+        path: "output/Code-Package.zip"

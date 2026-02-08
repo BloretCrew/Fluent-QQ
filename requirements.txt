@@ -1,0 +1,5 @@
+PyQt6
+PyQt6-Fluent-Widgets
+requests
+websocket-client
+win11toast
