@@ -82,10 +82,15 @@ class SettingInterface(ScrollArea):
 
         # Behavior
         self.behaviorGroup = SettingCardGroup("行为", self.scrollWidget)
+        self.notificationCard = SwitchSettingCard(
+            FIF.RINGER, "Windows 通知", "收到新消息时通过系统通知提醒，并支持快捷回复",
+            config.enableWindowsNotification, self.behaviorGroup
+        )
         self.imagePreviewCard = OptionsSettingCard(
             config.imagePreviewMode, FIF.PHOTO, "图片预览方式", "选择点击图片时的打开方式",
             texts=["QuickLook", "系统默认打开"], parent=self.behaviorGroup
         )
+        self.behaviorGroup.addSettingCard(self.notificationCard)
         self.behaviorGroup.addSettingCard(self.imagePreviewCard)
 
         # Connection

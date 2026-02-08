@@ -35,6 +35,8 @@ class Config(QConfig):
     )
     
     # Behavior
+    enableWindowsNotification = ConfigItem(None, "enableWindowsNotification", False)
+    
     imagePreviewMode = OptionsConfigItem(
         None, "imagePreviewMode", ImagePreviewMode.QUICKLOOK,
         OptionsValidator(ImagePreviewMode), EnumSerializer(ImagePreviewMode)
@@ -51,6 +53,7 @@ class Config(QConfig):
         if key == "theme": return self.themeMode.value
         if key == "messageLayout": return self.messageLayout.value
         if key == "imagePreviewMode": return self.imagePreviewMode.value
+        if key == "enableWindowsNotification": return self.enableWindowsNotification.value
         if key == "chatFontFamily": return self.chatFontFamily.value
         if key == "language": return self.language.value
         return default
@@ -79,7 +82,11 @@ class Config(QConfig):
                 qconfig.set(item, value)
 
 config = Config()
-config_path = os.path.abspath("config.json")
+
+# Ensure correct path resolution regardless of CWD
+import os
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+config_path = os.path.join(ROOT_DIR, "config.json")
 
 def load_config():
     if os.path.exists(config_path):
@@ -96,6 +103,7 @@ def load_config():
                 if "theme" in source:
                     try: config.themeMode.value = Theme(source["theme"])
                     except: pass
+                if "enableWindowsNotification" in source: config.enableWindowsNotification.value = source["enableWindowsNotification"]
                 if "messageLayout" in source:
                     try: config.messageLayout.value = MessageLayout(source["messageLayout"])
                     except: pass

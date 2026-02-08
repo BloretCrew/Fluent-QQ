@@ -100,9 +100,10 @@ class ChatBubble(SimpleCardWidget):
     
     reactRequested = pyqtSignal(str, str) # msg_id, emoji_id
     replyRequested = pyqtSignal(str) # msg_id
+    replyClicked = pyqtSignal(str) # reply_id
     recallRequested = pyqtSignal(str) # msg_id
     
-    def __init__(self, message_id=None, is_self=False, parent=None):
+    def __init__(self, is_self=False, message_id=None, parent=None):
         super().__init__(parent)
         self.message_id = message_id
         self.is_self = is_self
@@ -134,7 +135,7 @@ class ChatBubble(SimpleCardWidget):
     def setReply(self, reply_text, reply_id):
         # Add reply quote at top
         quote = ReplyQuote(reply_text, self)
-        quote.clicked.connect(lambda: print(f"Jump to reply {reply_id}")) # TODO: Implement jump
+        quote.clicked.connect(lambda: self.replyClicked.emit(str(reply_id)))
         self._layout.insertWidget(0, quote)
 
     def contextMenuEvent(self, event):

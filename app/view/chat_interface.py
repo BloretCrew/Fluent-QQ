@@ -215,13 +215,17 @@ class ChatView(QWidget):
         self.reply_bar = QWidget()
         self.reply_bar.setFixedHeight(36)
         self.reply_bar.hide()
+        self.reply_bar.setObjectName("replyBar")
+        self.reply_bar.setStyleSheet("#replyBar { background-color: rgba(127, 127, 127, 0.1); border-radius: 6px; }")
         self.reply_layout = QHBoxLayout(self.reply_bar)
         self.reply_layout.setContentsMargins(10, 0, 10, 0)
         self.reply_layout.setSpacing(10)
         
         self.reply_label = CaptionLabel("回复: ", self.reply_bar)
         self.reply_close_btn = TransparentPushButton(FIF.CLOSE, "", self.reply_bar)
-        self.reply_close_btn.setFixedSize(24, 24)
+        self.reply_close_btn.setFixedSize(26, 26)
+        self.reply_close_btn.setIconSize(QSize(12, 12))
+        self.reply_close_btn.setToolTip("取消回复")
         self.reply_close_btn.clicked.connect(self.exitReplyMode)
         
         self.reply_layout.addWidget(self.reply_label)
