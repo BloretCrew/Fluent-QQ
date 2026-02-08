@@ -29,12 +29,12 @@ class NapCatClient(QObject):
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
-    def call_api(self, action, params=None):
+    def call_api(self, action, params=None, timeout=20):
         """ Call HTTP API """
         try:
             url = f"{self.api_url}/{action}"
             print(f"[Client] Calling API: {url}")
-            response = requests.post(url, json=params or {}, headers=self.get_api_headers(), timeout=5)
+            response = requests.post(url, json=params or {}, headers=self.get_api_headers(), timeout=timeout)
             print(f"[Client] API Response status: {response.status_code}")
             return response.json()
         except Exception as e:
@@ -123,6 +123,58 @@ class NapCatClient(QObject):
         }
         return self.call_api(action, params)
 
+    def send_image(self, target_id, image_path, is_group=False):
+        """ Send image message """
+        # Using base64 for remote server compatibility
+        import os
+        import base64
+        
+        if not os.path.exists(image_path):
+            print(f"[Client] Image file not found: {image_path}")
+            return None
+            
+        try:
+            with open(image_path, "rb") as f:
+                img_data = f.read()
+                b64_data = base64.b64encode(img_data).decode('utf-8')
+            
+            cq_code = f"[CQ:image,file=base64://{b64_data}]"
+            return self.send_message(target_id, cq_code, is_group)
+        except Exception as e:
+            print(f"[Client] Failed to send image: {e}")
+            return None
+
+    def upload_file(self, target_id, file_path, is_group=False):
+        """ Upload file (Group or Private) """
+        tid = self._to_id(target_id)
+        if tid is None:
+            return None
+            
+        import os
+        if not os.path.exists(file_path):
+            print(f"[Client] File not found: {file_path}")
+            return None
+            
+        file_name = os.path.basename(file_path)
+        abs_path = os.path.abspath(file_path)
+        
+        if is_group:
+            action = "upload_group_file"
+            params = {
+                "group_id": tid,
+                "file": abs_path,
+                "name": file_name
+            }
+        else:
+            action = "upload_private_file"
+            params = {
+                "user_id": tid,
+                "file": abs_path,
+                "name": file_name
+            }
+            
+        return self.call_api(action, params)
+
     def delete_msg(self, message_id):
         """ Recall/Withdraw message """
         if not message_id:
@@ -172,5 +224,9 @@ class NapCatClient(QObject):
     def get_recent_contact(self):
         """ Get recent contact list (NapCat extension) """
         return self.call_api("get_recent_contact")
+
+    def get_login_info(self):
+        """ Get login info """
+        return self.call_api("get_login_info")
 
 client = NapCatClient()

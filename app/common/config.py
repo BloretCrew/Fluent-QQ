@@ -10,6 +10,11 @@ class ImagePreviewMode(Enum):
     QUICKLOOK = "QuickLook"
     SYSTEM_DEFAULT = "System Default"
 
+class MessageLayout(Enum):
+    """ Message Layout """
+    RIGHT_SELF = "Right Self"
+    ALL_LEFT = "All Left"
+
 class Config(QConfig):
     """ Configuration class """
     
@@ -24,11 +29,18 @@ class Config(QConfig):
         OptionsValidator([Theme.LIGHT, Theme.DARK, Theme.AUTO]), EnumSerializer(Theme)
     )
     
+    messageLayout = OptionsConfigItem(
+        None, "messageLayout", MessageLayout.RIGHT_SELF,
+        OptionsValidator(MessageLayout), EnumSerializer(MessageLayout)
+    )
+    
     # Behavior
     imagePreviewMode = OptionsConfigItem(
         None, "imagePreviewMode", ImagePreviewMode.QUICKLOOK,
         OptionsValidator(ImagePreviewMode), EnumSerializer(ImagePreviewMode)
     )
+    
+    chatFontFamily = ConfigItem(None, "chatFontFamily", "Microsoft YaHei")
     
     language = ConfigItem(None, "language", "zh_CN")
 
@@ -37,7 +49,9 @@ class Config(QConfig):
         if key == "ws_url": return self.ws_url.value
         if key == "token": return self.token.value
         if key == "theme": return self.themeMode.value
+        if key == "messageLayout": return self.messageLayout.value
         if key == "imagePreviewMode": return self.imagePreviewMode.value
+        if key == "chatFontFamily": return self.chatFontFamily.value
         if key == "language": return self.language.value
         return default
 
@@ -47,11 +61,18 @@ class Config(QConfig):
                 try: value = Theme(value)
                 except: value = Theme.AUTO
             qconfig.set(self.themeMode, value)
+        elif key == "messageLayout":
+            if isinstance(value, str):
+                try: value = MessageLayout(value)
+                except: value = MessageLayout.RIGHT_SELF
+            qconfig.set(self.messageLayout, value)
         elif key == "imagePreviewMode":
             if isinstance(value, str):
                 try: value = ImagePreviewMode(value)
                 except: value = ImagePreviewMode.QUICKLOOK
             qconfig.set(self.imagePreviewMode, value)
+        elif key == "chatFontFamily":
+            qconfig.set(self.chatFontFamily, value)
         elif hasattr(self, key):
             item = getattr(self, key)
             if isinstance(item, ConfigItem):
@@ -74,6 +95,9 @@ def load_config():
                 if "token" in source: config.token.value = source["token"]
                 if "theme" in source:
                     try: config.themeMode.value = Theme(source["theme"])
+                    except: pass
+                if "messageLayout" in source:
+                    try: config.messageLayout.value = MessageLayout(source["messageLayout"])
                     except: pass
                 if "imagePreviewMode" in source:
                     try: config.imagePreviewMode.value = ImagePreviewMode(source["imagePreviewMode"])

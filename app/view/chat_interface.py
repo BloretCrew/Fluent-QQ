@@ -1,17 +1,23 @@
 from PyQt6.QtCore import Qt, QSize, pyqtSignal, QTimer
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy, QStackedWidget
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy, QStackedWidget, QFileDialog, QApplication, QDialog, QLabel, QPushButton
+from PyQt6.QtGui import QImage, QPixmap, QClipboard, QKeyEvent
 from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton,
                             FluentIcon as FIF, TabBar, TabCloseButtonDisplayMode, SegmentedWidget,
-                            SimpleCardWidget, IconWidget, LineEdit, PrimaryPushButton)
+                            SimpleCardWidget, IconWidget, LineEdit, PrimaryPushButton, qconfig, Theme, isDarkTheme,
+                            RoundMenu, Action)
 from app.common.api_client import client
 from app.view.components.image_widget import ImageWidget
 from app.view.components.avatar_widget import AvatarWidget
 from app.view.components.chat_bubble import ChatBubble
 from app.common.time_utils import get_relative_time
+from app.common.config import config, MessageLayout
+from app.common.history_manager import history_manager
+from app.view.components.member_select_dialog import MemberSelectDialog
 from qfluentwidgets import (SubtitleLabel, CaptionLabel, setFont, ScrollArea, TransparentPushButton,
                             FluentIcon as FIF, TabBar, TabCloseButtonDisplayMode, SegmentedWidget,
                             SimpleCardWidget, IconWidget, LineEdit, PrimaryPushButton, qconfig, Theme, isDarkTheme)
 import json
+import time
 
 class MessageCard(SimpleCardWidget):
     """ Custom card to display message preview """
@@ -103,6 +109,76 @@ class MessageCard(SimpleCardWidget):
         else:
             self.msg_label.setStyleSheet("color: rgba(0, 0, 0, 0.6);")
 
+class ChatLineEdit(LineEdit):
+    """ LineEdit that handles image pasting """
+    imagePasted = pyqtSignal(QImage)
+    
+    def keyPressEvent(self, event):
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier and event.key() == Qt.Key.Key_V:
+            clipboard = QApplication.clipboard()
+            mime_data = clipboard.mimeData()
+            if mime_data.hasImage():
+                event.accept()
+                self.imagePasted.emit(clipboard.image())
+                return
+        super().keyPressEvent(event)
+
+class ImagePasteDialog(QDialog):
+    """ Dialog to preview and confirm sending pasted image """
+    def __init__(self, image, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("发送图片确认")
+        self.setFixedSize(400, 350)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
+        
+        # Title
+        title_label = SubtitleLabel("确认发送这张图片吗？", self)
+        layout.addWidget(title_label, 0, Qt.AlignmentFlag.AlignHCenter)
+        
+        # Image Preview
+        self.image_label = QLabel(self)
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Scale pixmap
+        pixmap = QPixmap.fromImage(image)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(360, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.image_label.setPixmap(scaled)
+            
+        layout.addWidget(self.image_label)
+        
+        # Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+        
+        self.cancel_btn = QPushButton("取消", self)
+        self.cancel_btn.setFixedSize(100, 32)
+        self.cancel_btn.clicked.connect(self.reject)
+        
+        self.send_btn = PrimaryPushButton("发送", self)
+        self.send_btn.setFixedSize(100, 32)
+        self.send_btn.clicked.connect(self.accept)
+        
+        btn_layout.addStretch(1)
+        btn_layout.addWidget(self.cancel_btn)
+        btn_layout.addWidget(self.send_btn)
+        btn_layout.addStretch(1)
+        
+        layout.addLayout(btn_layout)
+        
+        # Apply theme
+        if isDarkTheme():
+            self.setStyleSheet("background-color: #2b2b2b; color: white;")
+            self.image_label.setStyleSheet("background-color: #3b3b3b; border: 1px solid #4b4b4b; border-radius: 8px;")
+            self.cancel_btn.setStyleSheet("background-color: #3b3b3b; color: white; border: 1px solid #4b4b4b; border-radius: 4px;")
+        else:
+            self.setStyleSheet("background-color: white; color: black;")
+            self.image_label.setStyleSheet("background-color: #f0f0f0; border: 1px solid #e0e0e0; border-radius: 8px;")
+            self.cancel_btn.setStyleSheet("background-color: #f0f0f0; color: black; border: 1px solid #d0d0d0; border-radius: 4px;")
+
 class ChatView(QWidget):
     """ Individual Chat View """
     def __init__(self, target_id, name, is_group=False, parent=None):
@@ -129,16 +205,48 @@ class ChatView(QWidget):
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll_area.setWidget(self.scroll_widget)
         
-        # Input Area
+        # Input Area Container (Vertical: Reply Bar + Input Row)
         self.input_area_widget = QWidget()
-        self.input_area_layout = QHBoxLayout(self.input_area_widget)
+        self.input_main_layout = QVBoxLayout(self.input_area_widget)
+        self.input_main_layout.setContentsMargins(0, 0, 0, 0)
+        self.input_main_layout.setSpacing(0)
+        
+        # Reply Bar
+        self.reply_bar = QWidget()
+        self.reply_bar.setFixedHeight(36)
+        self.reply_bar.hide()
+        self.reply_layout = QHBoxLayout(self.reply_bar)
+        self.reply_layout.setContentsMargins(10, 0, 10, 0)
+        self.reply_layout.setSpacing(10)
+        
+        self.reply_label = CaptionLabel("回复: ", self.reply_bar)
+        self.reply_close_btn = TransparentPushButton(FIF.CLOSE, "", self.reply_bar)
+        self.reply_close_btn.setFixedSize(24, 24)
+        self.reply_close_btn.clicked.connect(self.exitReplyMode)
+        
+        self.reply_layout.addWidget(self.reply_label)
+        self.reply_layout.addStretch(1)
+        self.reply_layout.addWidget(self.reply_close_btn)
+        
+        # Input Row
+        self.input_row = QWidget()
+        self.input_area_layout = QHBoxLayout(self.input_row)
         self.input_area_layout.setContentsMargins(0, 10, 0, 0)
         self.input_area_layout.setSpacing(10)
         
         self.upload_btn = TransparentPushButton(FIF.ADD, "", self)
         self.upload_btn.setFixedSize(32, 32)
+        self.upload_btn.setIconSize(QSize(20, 20))
+        self.upload_btn.clicked.connect(self.showUploadMenu)
         
-        self.input_edit = LineEdit(self)
+        self.at_btn = TransparentPushButton(FIF.PEOPLE, "", self)
+        self.at_btn.setFixedSize(32, 32)
+        self.at_btn.setIconSize(QSize(20, 20))
+        self.at_btn.setToolTip("提及(@)")
+        self.at_btn.clicked.connect(self.showAtMenu)
+        
+        self.input_edit = ChatLineEdit(self)
+        self.input_edit.imagePasted.connect(self.onImagePasted)
         self.input_edit.setPlaceholderText("在此输入消息...")
         self.input_edit.returnPressed.connect(self.sendMessage)
         
@@ -146,8 +254,12 @@ class ChatView(QWidget):
         self.send_btn.clicked.connect(self.sendMessage)
         
         self.input_area_layout.addWidget(self.upload_btn)
+        self.input_area_layout.addWidget(self.at_btn)
         self.input_area_layout.addWidget(self.input_edit, 1)
         self.input_area_layout.addWidget(self.send_btn)
+        
+        self.input_main_layout.addWidget(self.reply_bar)
+        self.input_main_layout.addWidget(self.input_row)
         
         self.layout.addLayout(self.header)
         self.layout.addWidget(self.scroll_area)
@@ -157,6 +269,10 @@ class ChatView(QWidget):
         QTimer.singleShot(100, self.loadHistory)
         
         self.message_widgets = {} # message_id -> row_widget
+        self.reply_data = None # Current reply target
+        self.pending_at_users = []
+        self.pending_at_all = False
+
 
     def onRecallRequested(self, message_id):
         """ Handle message recall """
@@ -210,54 +326,147 @@ class ChatView(QWidget):
             )
 
     def loadHistory(self):
-        """ Fetch and display recent chat history from NapCat """
+        """ Fetch and display recent chat history """
         if not self.target_id or str(self.target_id).lower() == 'none':
             print(f"[UI] Invalid target_id for history loading: {self.target_id}")
             return
-            
+
+        # Get self_id for identification
+        self.current_self_id = None
+        try:
+            chat_interface = self.window().findChild(QFrame, "chatInterface")
+            if chat_interface and chat_interface.self_id:
+                self.current_self_id = str(chat_interface.self_id)
+        except Exception:
+            pass
+
+        # 1. Load from Local DB
+        local_msgs = history_manager.get_messages(self.target_id, self.is_group, limit=20)
+        if local_msgs:
+            print(f"[UI] Loaded {len(local_msgs)} local messages for {self.target_id}")
+            for msg in local_msgs:
+                self._process_msg_data(msg)
+
+        # 2. Load from API
+        # Use QTimer to run this slightly later or in background to avoid blocking UI render of local msgs
+        QTimer.singleShot(100, self._fetch_remote_history)
+
+    def _fetch_remote_history(self):
         res = client.get_history(self.target_id, self.is_group, count=20)
         if not res or res.get("status") != "ok":
-            print(f"[UI] Failed to load history for {self.target_id}")
+            print(f"[UI] Failed to load remote history for {self.target_id}")
             return
             
         messages = res.get("data", {}).get("messages", [])
-        for i, msg in enumerate(messages):
-            sender = msg.get("sender", {})
-            sender_name = sender.get("nickname", "用户")
-            sender_id = sender.get("user_id")
-            content = msg.get("message", "")
-            time_val = msg.get("time")
-            time_str = get_relative_time(time_val)
-            msg_id = str(msg.get("message_id")) if msg.get("message_id") else None
-            
-            # Handle emoji likes
-            emoji_likes = msg.get("emoji_likes_list", [])
-            normalized_likes = []
-            if emoji_likes:
-                try:
-                    # Check format
-                    if isinstance(emoji_likes[0], dict):
-                        if "count" in emoji_likes[0]:
-                            normalized_likes = emoji_likes
-                        elif "emoji_id" in emoji_likes[0]:
-                            # Aggregate
-                            counts = {}
-                            for item in emoji_likes:
-                                eid = str(item.get("emoji_id"))
-                                counts[eid] = counts.get(eid, 0) + 1
-                            normalized_likes = [{"emoji_id": eid, "count": c} for eid, c in counts.items()]
-                except Exception as e:
-                    print(f"[UI] Error processing emoji likes: {e}")
+        
+        # Save to DB
+        history_manager.save_messages(self.target_id, self.is_group, messages)
+        
+        # Add to UI
+        for msg in messages:
+            self._process_msg_data(msg)
 
-            # PROBE: Print message structure to check for emoji likes
-            # if i == 0:
-            #     print(f"[PROBE] Message Structure: {json.dumps(msg, indent=2, ensure_ascii=False)}")
-            
-            avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
-            # Identification of self can be improved if we have current login ID
-            self.addMessage(sender_name, content, is_self=False, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes)
+    def _get_msg_summary(self, message_data):
+        """ Extract text summary from message data """
+        if isinstance(message_data, str):
+            return message_data
+        
+        text = ""
+        if isinstance(message_data, list):
+            for seg in message_data:
+                if seg.get("type") == "text":
+                    text += seg.get("data", {}).get("text", "")
+                elif seg.get("type") == "image":
+                    text += "[图片]"
+                elif seg.get("type") == "face":
+                    text += "[表情]"
+                elif seg.get("type") == "at":
+                    qq = seg.get("data", {}).get("qq", "")
+                    text += f"@{qq} "
+                elif seg.get("type") == "reply":
+                    text += "[回复]"
+        return text
 
-    def addMessage(self, name, message, is_self=False, avatar_url=None, message_id=None, time_str="", emoji_likes=None):
+    def _process_msg_data(self, msg):
+        """ Process message data and add to UI """
+        msg_id = str(msg.get("message_id")) if msg.get("message_id") else None
+        
+        sender = msg.get("sender", {})
+        sender_name = sender.get("nickname", "用户")
+        sender_id = str(sender.get("user_id"))
+        content = msg.get("message", "")
+        time_val = msg.get("time")
+        time_str = get_relative_time(time_val)
+        
+        # Identify self
+        is_self = (sender_id == self.current_self_id) if self.current_self_id else False
+        
+        # Handle emoji likes
+        emoji_likes = msg.get("emoji_likes_list", [])
+        normalized_likes = []
+        if emoji_likes:
+            try:
+                # Check format
+                if isinstance(emoji_likes[0], dict):
+                    if "count" in emoji_likes[0]:
+                        normalized_likes = emoji_likes
+                    elif "emoji_id" in emoji_likes[0]:
+                        # Aggregate
+                        counts = {}
+                        for item in emoji_likes:
+                            eid = str(item.get("emoji_id"))
+                            counts[eid] = counts.get(eid, 0) + 1
+                        normalized_likes = [{"emoji_id": eid, "count": c} for eid, c in counts.items()]
+            except Exception as e:
+                print(f"[UI] Error processing emoji likes: {e}")
+        
+        # Handle Reply
+        reply_text = None
+        reply_ref_id = None
+        if isinstance(content, list):
+            for seg in content:
+                if seg.get("type") == "reply":
+                    reply_ref_id = seg.get("data", {}).get("id")
+                    if reply_ref_id:
+                        # Try local
+                        ref_msg = history_manager.get_message_by_id(reply_ref_id)
+                        if not ref_msg:
+                            # Try remote
+                            try:
+                                res = client.get_msg(reply_ref_id)
+                                if res and res.get("status") == "ok":
+                                    ref_msg = res.get("data")
+                            except:
+                                pass
+                        
+                        if ref_msg:
+                            r_sender = ref_msg.get("sender", {}).get("nickname", "用户")
+                            r_content = self._get_msg_summary(ref_msg.get("message", ""))
+                            reply_text = f"{r_sender}: {r_content}"
+                        else:
+                            reply_text = "回复消息 [加载失败]"
+                    break
+
+        avatar_url = f"http://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640" if sender_id else None
+        
+        # Update or Add
+        if msg_id and msg_id in self.message_widgets:
+            self.updateMessage(msg_id, emoji_likes=normalized_likes)
+        else:
+            self.addMessage(sender_name, content, is_self=is_self, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes, reply_text=reply_text, reply_id=reply_ref_id)
+
+    def updateMessage(self, message_id, emoji_likes=None):
+        """ Update existing message in UI """
+        row_widget = self.message_widgets.get(str(message_id))
+        if not row_widget: return
+        
+        # Find bubble
+        bubble = row_widget.findChild(ChatBubble)
+        if bubble:
+            if emoji_likes is not None:
+                bubble.setReactions(emoji_likes)
+
+    def addMessage(self, name, message, is_self=False, avatar_url=None, message_id=None, time_str="", emoji_likes=None, reply_text=None, reply_id=None):
         """ Add a message to the chat view """
         # Main container for the message row
         row_widget = QWidget()
@@ -305,30 +514,63 @@ class ChatView(QWidget):
         if message_id:
             bubble.recallRequested.connect(self.onRecallRequested)
             bubble.reactRequested.connect(self.onReactRequested)
+            bubble.replyRequested.connect(self.enterReplyMode)
+            bubble.replyClicked.connect(self.scrollToMessage)
             # Store widget for recall
             self.message_widgets[str(message_id)] = row_widget
 
-        bubble_layout = QVBoxLayout(bubble)
+        bubble_layout = bubble.layout()
+        if bubble_layout is None:
+            bubble_layout = QVBoxLayout(bubble)
+            
         bubble_layout.setContentsMargins(12, 10, 12, 10)
 
         # Message Content Processing
         has_content = False
         if isinstance(message, list):
+            current_text_block = ""
+            
             for segment in message:
                 seg_type = segment.get("type")
                 seg_data = segment.get("data", {})
                 
                 if seg_type == "text":
-                    text = seg_data.get("text", "")
-                    if text:
-                        msg_label = SubtitleLabel(text, bubble)
-                        setFont(msg_label, 14)
-                        msg_label.setWordWrap(True)
-                        # Text color handled by parent bubble stylesheet
-                        bubble_layout.addWidget(msg_label)
+                    t = seg_data.get("text", "")
+                    if t:
+                        t = t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+                        current_text_block += t
                         has_content = True
                         
+                elif seg_type == "at":
+                    qq = seg_data.get("qq", "")
+                    # Highlight style
+                    if is_self:
+                        style = "color: white; font-weight: bold;"
+                    else:
+                        color = "#4cc2ff" if isDarkTheme() else "#0078D4"
+                        style = f"color: {color}; font-weight: bold;"
+                    
+                    display_name = "全体成员" if str(qq) == "all" else str(qq)
+                    current_text_block += f'&nbsp;<span style="{style}">@{display_name}</span>&nbsp;'
+                    has_content = True
+                    
+                elif seg_type == "face":
+                    current_text_block += "[表情]"
+                    has_content = True
+                    
                 elif seg_type == "image":
+                    if current_text_block:
+                        msg_label = QLabel(current_text_block, bubble)
+                        msg_label.setTextFormat(Qt.TextFormat.RichText)
+                        msg_label.setWordWrap(True)
+                        msg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
+                        font = msg_label.font()
+                        font.setPixelSize(14)
+                        font.setFamily("Segoe UI")
+                        msg_label.setFont(font)
+                        bubble_layout.addWidget(msg_label)
+                        current_text_block = ""
+                    
                     image_url = seg_data.get("url") or seg_data.get("file")
                     if image_url:
                         try:
@@ -342,6 +584,17 @@ class ChatView(QWidget):
                             error_label = CaptionLabel("[图片加载失败]", bubble)
                             bubble_layout.addWidget(error_label)
                             has_content = True
+            
+            if current_text_block:
+                msg_label = QLabel(current_text_block, bubble)
+                msg_label.setTextFormat(Qt.TextFormat.RichText)
+                msg_label.setWordWrap(True)
+                msg_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse)
+                font = msg_label.font()
+                font.setPixelSize(14)
+                font.setFamily("Segoe UI")
+                msg_label.setFont(font)
+                bubble_layout.addWidget(msg_label)
             
             if not has_content:
                 msg_label = SubtitleLabel("[非文本消息]", bubble)
@@ -358,8 +611,15 @@ class ChatView(QWidget):
         if emoji_likes:
             bubble.setReactions(emoji_likes)
 
+        if reply_text:
+            bubble.setReply(reply_text, reply_id)
+
         # Layout Assembly
-        if is_self:
+        # Check config
+        layout_mode = config.messageLayout.value
+        align_right = is_self and (layout_mode == MessageLayout.RIGHT_SELF)
+
+        if align_right:
             # Structure: [Stretch] [Content(Name+Bubble)] [Avatar]
             row_layout.addStretch(1)
             
@@ -385,15 +645,314 @@ class ChatView(QWidget):
             self.scroll_area.verticalScrollBar().maximum()
         ))
 
+    def scrollToMessage(self, message_id):
+        """ Scroll to a specific message """
+        if not message_id: return
+        
+        message_id = str(message_id)
+        widget = self.message_widgets.get(message_id)
+        
+        if widget:
+            self.scroll_area.ensureWidgetVisible(widget)
+            # Optional: Add visual cue
+        else:
+            from qfluentwidgets import InfoBar
+            InfoBar.warning(
+                title='无法定位消息',
+                content='该消息不在当前视图中。',
+                parent=self,
+                duration=2000
+            )
+
+    def showUploadMenu(self):
+        """ Show upload menu for Image/File """
+        menu = RoundMenu(parent=self)
+        
+        img_action = Action(FIF.PHOTO, "发送图片", self)
+        img_action.triggered.connect(self._onSendImage)
+        menu.addAction(img_action)
+        
+        file_action = Action(FIF.DOCUMENT, "发送文件", self)
+        file_action.triggered.connect(self._onSendFile)
+        menu.addAction(file_action)
+        
+        # Position menu above the button
+        pos = self.upload_btn.mapToGlobal(self.upload_btn.rect().topLeft())
+        pos.setY(pos.y() - menu.sizeHint().height() - 10)
+        menu.exec(pos)
+
+    def _get_self_avatar_url(self):
+        """ Get self avatar URL """
+        # Need to access ChatInterface parent to get self_id
+        # Since ChatView is child of QStackedWidget which is child of ChatInterface
+        # This is a bit hacky, better to pass self_info to ChatView
+        try:
+            chat_interface = self.window().findChild(QFrame, "chatInterface")
+            if chat_interface and chat_interface.self_id:
+                return f"http://q1.qlogo.cn/g?b=qq&nk={chat_interface.self_id}&s=640"
+        except Exception:
+            pass
+        return None
+        
+    def _get_self_name(self):
+        """ Get self nickname """
+        try:
+            chat_interface = self.window().findChild(QFrame, "chatInterface")
+            if chat_interface and chat_interface.self_name:
+                return chat_interface.self_name
+        except Exception:
+            pass
+        return "我"
+
+    def _onSendImage(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择图片", "", "Images (*.png *.jpg *.jpeg *.gif *.bmp)"
+        )
+        if not file_path:
+            return
+            
+        res = client.send_image(self.target_id, file_path, self.is_group)
+        if res and res.get("status") == "ok":
+            message_id = str(res.get("data", {}).get("message_id"))
+            # Construct local segment for display
+            import os
+            abs_path = os.path.abspath(file_path).replace("\\", "/")
+            msg_data = [{"type": "image", "data": {"file": f"file:///{abs_path}"}}]
+            
+            self.addMessage(self._get_self_name(), msg_data, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url())
+        else:
+            from qfluentwidgets import InfoBar
+            InfoBar.error(title='发送失败', content='图片发送失败', parent=self)
+
+    def _onSendFile(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "选择文件", "", "All Files (*.*)")
+        if not file_path:
+            return
+            
+        # Notify user uploading started
+        from qfluentwidgets import InfoBar
+        InfoBar.info(title='正在上传', content='文件上传中...', parent=self)
+        
+        res = client.upload_file(self.target_id, file_path, self.is_group)
+        if res and res.get("status") == "ok":
+            import os
+            filename = os.path.basename(file_path)
+            self.addMessage(self._get_self_name(), f"[文件] {filename} 已上传", is_self=True, time_str="刚刚", avatar_url=self._get_self_avatar_url())
+            InfoBar.success(title='上传成功', content='文件已发送', parent=self)
+        else:
+            InfoBar.error(title='上传失败', content='文件上传失败', parent=self)
+
+    def onImagePasted(self, image):
+        """ Handle pasted image """
+        dlg = ImagePasteDialog(image, self)
+        if dlg.exec():
+            # Save to temp file
+            import tempfile
+            import os
+            
+            # Create temp file
+            fd, path = tempfile.mkstemp(suffix=".png")
+            os.close(fd)
+            
+            try:
+                if image.save(path, "PNG"):
+                    # Send using existing send_image logic
+                    res = client.send_image(self.target_id, path, self.is_group)
+                    
+                    if res and res.get("status") == "ok":
+                        message_id = str(res.get("data", {}).get("message_id"))
+                        # Construct local segment for display
+                        abs_path = os.path.abspath(path).replace("\\", "/")
+                        msg_data = [{"type": "image", "data": {"file": f"file:///{abs_path}"}}]
+                        
+                        self.addMessage(self._get_self_name(), msg_data, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url())
+                    else:
+                        from qfluentwidgets import InfoBar
+                        InfoBar.error(title='发送失败', content='图片发送失败', parent=self)
+                else:
+                    print("[UI] Failed to save pasted image to temp file")
+            except Exception as e:
+                print(f"[UI] Error handling pasted image: {e}")
+
+    def _get_self_id(self):
+        try:
+             chat_interface = self.window().findChild(QFrame, "chatInterface")
+             if chat_interface and hasattr(chat_interface, 'self_id') and chat_interface.self_id:
+                  return str(chat_interface.self_id)
+        except:
+             pass
+        return "0"
+
+    def _get_group_members(self):
+        if not self.target_id: return []
+        try:
+            res = client.call_api("get_group_member_list", {"group_id": int(self.target_id)})
+            if res and res.get("status") == "ok":
+                return res.get("data", [])
+        except Exception as e:
+            print(f"Error fetching members: {e}")
+        return []
+
+    def showAtMenu(self):
+        if not self.is_group:
+             self.input_edit.setText(self.input_edit.text() + "@")
+             self.input_edit.setFocus()
+             return
+
+        members = self._get_group_members()
+        if not members:
+            self.input_edit.setText(self.input_edit.text() + "@")
+            self.input_edit.setFocus()
+            return
+            
+        # Determine current user's role
+        current_role = "member"
+        self_id = self._get_self_id()
+        for m in members:
+            if str(m.get("user_id")) == str(self_id):
+                current_role = m.get("role", "member")
+                break
+            
+        dlg = MemberSelectDialog(members, current_role, self)
+        if dlg.exec():
+             selected = dlg.selected_members
+             text = self.input_edit.text()
+             if text and not text.endswith(" "):
+                 text += " "
+                 
+             for m in selected:
+                  if m.get('user_id') == 'all':
+                       text += "@all "
+                       self.pending_at_all = True
+                  else:
+                       name = m.get("card") or m.get("nickname") or str(m.get('user_id'))
+                       text += f"@{name} "
+                       self.pending_at_users.append(m)
+             
+             self.input_edit.setText(text)
+             self.input_edit.setFocus()
+
+    def enterReplyMode(self, message_id):
+        """ Enter reply mode for a message """
+        # Resolve message content
+        reply_text = f"回复: [ID:{message_id}]"
+        raw_text = ""
+        
+        # Try local first
+        ref_msg = history_manager.get_message_by_id(message_id)
+        if not ref_msg:
+             # Try remote
+             try:
+                 res = client.get_msg(message_id)
+                 if res and res.get("status") == "ok":
+                     ref_msg = res.get("data")
+             except:
+                 pass
+        
+        if ref_msg:
+            r_sender = ref_msg.get("sender", {}).get("nickname", "用户")
+            raw_text = self._get_msg_summary(ref_msg.get("message", ""))
+            # Limit length
+            if len(raw_text) > 20: raw_text = raw_text[:20] + "..."
+            reply_text = f"回复 {r_sender}: {raw_text}"
+            
+        self.reply_data = {"id": message_id, "text": f"{r_sender}: {raw_text}" if ref_msg else f"消息 {message_id}"}
+        self.reply_bar.show()
+        self.reply_label.setText(reply_text) 
+        self.input_edit.setFocus()
+        
+    def exitReplyMode(self):
+        """ Exit reply mode """
+        self.reply_data = None
+        self.reply_bar.hide()
+
     def sendMessage(self):
         msg = self.input_edit.text().strip()
         if not msg: return
         
-        res = client.send_message(self.target_id, msg, self.is_group)
+        self.input_edit.clear()
+        
+        # Prepare content
+        sent_content = []
+        
+        # 1. Handle Reply
+        if self.reply_data:
+            sent_content.append({"type": "reply", "data": {"id": self.reply_data["id"]}})
+
+        # 2. Parse At segments
+        import re
+        entities = []
+        
+        # Check for @all
+        if self.pending_at_all:
+             for m in re.finditer(r"@all|@全体成员", msg):
+                  entities.append({"start": m.start(), "end": m.end(), "type": "at", "data": {"qq": "all"}})
+        
+        # Check for individual users
+        for u in self.pending_at_users:
+             name = u.get("card") or u.get("nickname") or str(u.get("user_id"))
+             escaped_name = re.escape(name)
+             pattern = f"@{escaped_name}"
+             for m in re.finditer(pattern, msg):
+                  entities.append({"start": m.start(), "end": m.end(), "type": "at", "data": {"qq": u.get("user_id")}})
+
+        # Sort and Filter overlaps
+        entities.sort(key=lambda x: x["start"])
+        clean_entities = []
+        last_end = 0
+        for e in entities:
+             if e["start"] >= last_end:
+                  clean_entities.append(e)
+                  last_end = e["end"]
+        
+        # Construct segments
+        segments = []
+        last_idx = 0
+        for e in clean_entities:
+             if e["start"] > last_idx:
+                  segments.append({"type": "text", "data": {"text": msg[last_idx:e["start"]]}})
+             segments.append({"type": e["type"], "data": e["data"]})
+             last_idx = e["end"]
+        
+        if last_idx < len(msg):
+             segments.append({"type": "text", "data": {"text": msg[last_idx:]}})
+             
+        if not segments:
+             segments.append({"type": "text", "data": {"text": msg}})
+             
+        sent_content.extend(segments)
+        
+        # Reset pending state
+        self.pending_at_users = []
+        self.pending_at_all = False
+        
+        # Send
+        reply_display_text = self.reply_data.get("text") if self.reply_data else None
+        
+        res = client.send_message(self.target_id, sent_content, self.is_group)
+        if self.reply_data:
+             self.exitReplyMode()
+             
         if res and res.get("status") == "ok":
             message_id = str(res.get("data", {}).get("message_id"))
-            self.addMessage("我", msg, is_self=True, message_id=message_id, time_str="刚刚")
-            self.input_edit.clear()
+            
+            # Save to history
+            try:
+                msg_data = {
+                    "message_id": message_id,
+                    "message_type": "group" if self.is_group else "private",
+                    "time": int(time.time()),
+                    "sender": {
+                        "user_id": self._get_self_id(),
+                        "nickname": self._get_self_name()
+                    },
+                    "message": sent_content
+                }
+                history_manager.save_message(self.target_id, self.is_group, msg_data)
+            except Exception as e:
+                print(f"[UI] Error saving sent message: {e}")
+
+            self.addMessage(self._get_self_name(), sent_content, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url(), reply_text=reply_display_text)
         else:
             self.addMessage("系统", "消息发送失败，请检查连接", is_self=False, time_str="刚刚")
 
@@ -469,6 +1028,10 @@ class ChatInterface(QFrame):
         self.group_list = {} # ID -> Name
         self.contact_map = {} # ID -> Name (full cache)
         
+        # Self Info
+        self.self_id = None
+        self.self_name = "我"
+        
         self.setObjectName("chatInterface")
         
         # Load Data
@@ -476,6 +1039,14 @@ class ChatInterface(QFrame):
 
     def loadInitialData(self):
         """ Startup data loading """
+        # Login Info
+        res = client.get_login_info()
+        if res and res.get("status") == "ok":
+            data = res.get("data", {})
+            self.self_id = str(data.get("user_id"))
+            self.self_name = data.get("nickname", "我")
+            print(f"[UI] Logged in as: {self.self_name} ({self.self_id})")
+        
         # Groups
         res = client.get_group_list()
         if res and res.get("status") == "ok":
@@ -620,6 +1191,17 @@ class ChatInterface(QFrame):
         if connected:
             self.status_label.setText("已连接到 NapCat QQ")
             self.status_label.setStyleSheet("color: #28a745;")
+            
+            # Fetch Self Info
+            try:
+                res = client.call_api("get_login_info")
+                if res and res.get("status") == "ok":
+                    self.self_id = str(res.get("data", {}).get("user_id"))
+                    history_manager.set_user_id(self.self_id)
+                    print(f"[UI] Self ID: {self.self_id}")
+            except Exception as e:
+                print(f"[UI] Failed to get login info: {e}")
+                
         else:
             self.status_label.setText("连接已断开，正在尝试重连...")
             self.status_label.setStyleSheet("color: #dc3545;")
@@ -642,6 +1224,10 @@ class ChatInterface(QFrame):
         if raw_id is None: return
         
         target_id = str(raw_id)
+        
+        # Save to history
+        history_manager.save_message(target_id, is_group, data)
+        
         content = data.get("message", "")
         time_val = data.get("time")
         time_str = get_relative_time(time_val) if time_val else "刚刚"

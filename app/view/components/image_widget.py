@@ -33,15 +33,27 @@ class ImageWidget(SimpleCardWidget):
         self.loadImage()
     
     def loadImage(self):
-        """ Load image from URL """
+        """ Load image from URL or local path """
         try:
-            # Simple synchronous loading for now
-            # TODO: Make this async with QThread
-            response = requests.get(self.image_url, timeout=5)
-            if response.status_code == 200:
-                pixmap = QPixmap()
-                pixmap.loadFromData(response.content)
+            pixmap = QPixmap()
+            success = False
+            
+            # Handle local file or file:// protocol
+            if self.image_url.startswith("file://") or not self.image_url.startswith("http"):
+                local_path = self.image_url
+                if local_path.startswith("file:///"):
+                    local_path = local_path[8:]
                 
+                if os.path.exists(local_path):
+                    success = pixmap.load(local_path)
+            else:
+                # Simple synchronous loading for now
+                # TODO: Make this async with QThread
+                response = requests.get(self.image_url, timeout=5)
+                if response.status_code == 200:
+                    success = pixmap.loadFromData(response.content)
+
+            if success:
                 # Scale to fit
                 scaled_pixmap = pixmap.scaled(
                     190, 190,
@@ -74,8 +86,12 @@ class ImageWidget(SimpleCardWidget):
 
     def _get_local_filepath(self):
         """ Get local filepath, downloading if necessary """
-        if not self.image_url.startswith("http"):
-            return self.image_url
+        url = self.image_url
+        if url.startswith("file:///"):
+            return url[8:]
+        
+        if not url.startswith("http"):
+            return url
             
         try:
             # Simple temp file caching

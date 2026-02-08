@@ -22,7 +22,12 @@ class SettingInterface(ScrollArea):
             config.themeMode, FIF.BRUSH, "应用主题", "调整外观（重启生效）",
             texts=["Light", "Dark", "Auto"], parent=self.appearanceGroup
         )
+        self.messageLayoutCard = OptionsSettingCard(
+            config.messageLayout, FIF.ALIGNMENT, "消息显示方式", "选择聊天气泡的排列方式",
+            texts=["Right Self", "All Left"], parent=self.appearanceGroup
+        )
         self.appearanceGroup.addSettingCard(self.themeCard)
+        self.appearanceGroup.addSettingCard(self.messageLayoutCard)
 
         # Behavior
         self.behaviorGroup = SettingCardGroup("行为", self.scrollWidget)
