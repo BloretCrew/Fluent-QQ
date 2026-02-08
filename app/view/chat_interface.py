@@ -283,6 +283,11 @@ class ChatView(QWidget):
         if self.is_group:
             QTimer.singleShot(500, self._update_group_members)
 
+        # Merge Logic State
+        self.last_msg_sender_id = None
+        self.last_msg_timestamp = 0
+        self.last_msg_is_self = None
+
         config.chatFontFamily.valueChanged.connect(self.updateChatFont)
 
     def _update_group_members(self):
@@ -501,7 +506,7 @@ class ChatView(QWidget):
         if msg_id and msg_id in self.message_widgets:
             self.updateMessage(msg_id, emoji_likes=normalized_likes)
         else:
-            self.addMessage(sender_name, content, is_self=is_self, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes, reply_text=reply_text, reply_id=reply_ref_id)
+            self.addMessage(sender_name, content, is_self=is_self, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes, reply_text=reply_text, reply_id=reply_ref_id, sender_id=sender_id, timestamp=time_val)
 
     def updateMessage(self, message_id, emoji_likes=None):
         """ Update existing message in UI """
@@ -514,48 +519,81 @@ class ChatView(QWidget):
             if emoji_likes is not None:
                 bubble.setReactions(emoji_likes)
 
-    def addMessage(self, name, message, is_self=False, avatar_url=None, message_id=None, time_str="", emoji_likes=None, reply_text=None, reply_id=None):
+    def addMessage(self, name, message, is_self=False, avatar_url=None, message_id=None, time_str="", emoji_likes=None, reply_text=None, reply_id=None, sender_id=None, timestamp=None):
         """ Add a message to the chat view """
+        # Determine if we should merge with previous message
+        should_merge = False
+        MERGE_TIME_WINDOW = 180 # 3 minutes
+        
+        current_time = timestamp if timestamp else time.time()
+        
+        # Only merge if we have a valid sender_id (to avoid merging system messages or unknown senders improperly)
+        if (sender_id is not None and 
+            self.last_msg_sender_id is not None and 
+            sender_id == self.last_msg_sender_id and 
+            is_self == self.last_msg_is_self and
+            abs(current_time - self.last_msg_timestamp) < MERGE_TIME_WINDOW and
+            not reply_text): # Don't merge if it's a reply
+            should_merge = True
+            
+        # Update last message state
+        self.last_msg_sender_id = sender_id
+        self.last_msg_timestamp = current_time
+        self.last_msg_is_self = is_self
+
         # Main container for the message row
         row_widget = QWidget()
         row_layout = QHBoxLayout(row_widget)
-        row_layout.setContentsMargins(0, 8, 0, 8)
+        
+        if should_merge:
+            row_layout.setContentsMargins(0, 2, 0, 2)
+        else:
+            row_layout.setContentsMargins(0, 8, 0, 8)
+            
         row_layout.setSpacing(12)
         
         # Avatar
-        if avatar_url:
-            avatar = AvatarWidget(avatar_url, size=36, parent=row_widget)
+        if not should_merge:
+            if avatar_url:
+                avatar = AvatarWidget(avatar_url, size=36, parent=row_widget)
+            else:
+                avatar = IconWidget(FIF.PEOPLE, row_widget)
+                avatar.setFixedSize(36, 36)
         else:
-            avatar = IconWidget(FIF.PEOPLE, row_widget)
+            # Placeholder for alignment
+            avatar = QWidget(row_widget)
             avatar.setFixedSize(36, 36)
+            avatar.setStyleSheet("background: transparent;")
         
         # Content container (Name + Bubble)
         content_layout = QVBoxLayout()
         content_layout.setSpacing(4)
         content_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Name & Time Container
-        name_container = QWidget()
-        name_layout = QHBoxLayout(name_container)
-        name_layout.setContentsMargins(0, 0, 0, 0)
-        name_layout.setSpacing(8)
-        
-        if is_self:
-             name_layout.addStretch(1)
-             if time_str:
-                 time_label = CaptionLabel(time_str, name_container)
-                 time_label.setStyleSheet("color: #999999;")
-                 name_layout.addWidget(time_label)
-             name_label = CaptionLabel(name, name_container)
-             name_layout.addWidget(name_label)
-        else:
-             name_label = CaptionLabel(name, name_container)
-             name_layout.addWidget(name_label)
-             if time_str:
-                 time_label = CaptionLabel(time_str, name_container)
-                 time_label.setStyleSheet("color: #999999;")
-                 name_layout.addWidget(time_label)
-             name_layout.addStretch(1)
+        # Name & Time Container (Only if not merged)
+        name_container = None
+        if not should_merge:
+            name_container = QWidget()
+            name_layout = QHBoxLayout(name_container)
+            name_layout.setContentsMargins(0, 0, 0, 0)
+            name_layout.setSpacing(8)
+            
+            if is_self:
+                 name_layout.addStretch(1)
+                 if time_str:
+                     time_label = CaptionLabel(time_str, name_container)
+                     time_label.setStyleSheet("color: #999999;")
+                     name_layout.addWidget(time_label)
+                 name_label = CaptionLabel(name, name_container)
+                 name_layout.addWidget(name_label)
+            else:
+                 name_label = CaptionLabel(name, name_container)
+                 name_layout.addWidget(name_label)
+                 if time_str:
+                     time_label = CaptionLabel(time_str, name_container)
+                     time_label.setStyleSheet("color: #999999;")
+                     name_layout.addWidget(time_label)
+                 name_layout.addStretch(1)
         
         # Bubble Container
         bubble = ChatBubble(is_self, message_id, row_widget)
@@ -693,7 +731,8 @@ class ChatView(QWidget):
             # Structure: [Stretch] [Content(Name+Bubble)] [Avatar]
             row_layout.addStretch(1)
             
-            content_layout.addWidget(name_container, 0, Qt.AlignmentFlag.AlignRight)
+            if name_container:
+                content_layout.addWidget(name_container, 0, Qt.AlignmentFlag.AlignRight)
             content_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignRight)
             
             row_layout.addLayout(content_layout)
@@ -702,7 +741,8 @@ class ChatView(QWidget):
             # Structure: [Avatar] [Content(Name+Bubble)] [Stretch]
             row_layout.addWidget(avatar, 0, Qt.AlignmentFlag.AlignTop)
             
-            content_layout.addWidget(name_container, 0, Qt.AlignmentFlag.AlignLeft)
+            if name_container:
+                content_layout.addWidget(name_container, 0, Qt.AlignmentFlag.AlignLeft)
             content_layout.addWidget(bubble, 0, Qt.AlignmentFlag.AlignLeft)
             
             row_layout.addLayout(content_layout)
@@ -789,7 +829,7 @@ class ChatView(QWidget):
             abs_path = os.path.abspath(file_path).replace("\\", "/")
             msg_data = [{"type": "image", "data": {"file": f"file:///{abs_path}"}}]
             
-            self.addMessage(self._get_self_name(), msg_data, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url())
+            self.addMessage(self._get_self_name(), msg_data, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url(), sender_id=self._get_self_id(), timestamp=time.time())
         else:
             from qfluentwidgets import InfoBar
             InfoBar.error(title='发送失败', content='图片发送失败', parent=self)
@@ -807,7 +847,7 @@ class ChatView(QWidget):
         if res and res.get("status") == "ok":
             import os
             filename = os.path.basename(file_path)
-            self.addMessage(self._get_self_name(), f"[文件] {filename} 已上传", is_self=True, time_str="刚刚", avatar_url=self._get_self_avatar_url())
+            self.addMessage(self._get_self_name(), f"[文件] {filename} 已上传", is_self=True, time_str="刚刚", avatar_url=self._get_self_avatar_url(), sender_id=self._get_self_id(), timestamp=time.time())
             InfoBar.success(title='上传成功', content='文件已发送', parent=self)
         else:
             InfoBar.error(title='上传失败', content='文件上传失败', parent=self)
@@ -835,7 +875,7 @@ class ChatView(QWidget):
                         abs_path = os.path.abspath(path).replace("\\", "/")
                         msg_data = [{"type": "image", "data": {"file": f"file:///{abs_path}"}}]
                         
-                        self.addMessage(self._get_self_name(), msg_data, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url())
+                        self.addMessage(self._get_self_name(), msg_data, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url(), sender_id=self._get_self_id(), timestamp=time.time())
                     else:
                         from qfluentwidgets import InfoBar
                         InfoBar.error(title='发送失败', content='图片发送失败', parent=self)
@@ -1022,7 +1062,7 @@ class ChatView(QWidget):
             except Exception as e:
                 print(f"[UI] Error saving sent message: {e}")
 
-            self.addMessage(self._get_self_name(), sent_content, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url(), reply_text=reply_display_text)
+            self.addMessage(self._get_self_name(), sent_content, is_self=True, message_id=message_id, time_str="刚刚", avatar_url=self._get_self_avatar_url(), reply_text=reply_display_text, sender_id=self._get_self_id(), timestamp=time.time())
         else:
             self.addMessage("系统", "消息发送失败，请检查连接", is_self=False, time_str="刚刚")
 
@@ -1331,7 +1371,7 @@ class ChatInterface(QFrame):
                 except Exception:
                     pass
 
-            self.chats[routeKey].addMessage(sender_name, content, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes)
+            self.chats[routeKey].addMessage(sender_name, content, avatar_url=avatar_url, message_id=msg_id, time_str=time_str, emoji_likes=normalized_likes, sender_id=sender_id, timestamp=time_val)
 
     def _update_or_create_card(self, target_id, name, text, time_str, is_group, card_type="recent"):
         card_key = f"{card_type}:{target_id}"
